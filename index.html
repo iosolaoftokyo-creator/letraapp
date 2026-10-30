@@ -248,8 +248,9 @@
 
         <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
           <span>マスタ登録商品数: <span id="productMasterCount" class="font-bold text-slate-700">0</span> 件</span>
-          <button id="refreshMasterBtn" type="button" class="text-indigo-600 hover:text-indigo-800 font-bold">
-            🔄 マスタ再読み込み
+          <button id="refreshMasterBtn" type="button" class="text-indigo-600 hover:text-indigo-800 font-bold flex items-center space-x-1">
+            <span id="refreshMasterSpinner" class="hidden animate-spin">🔄</span>
+            <span>マスタ更新</span>
           </button>
         </div>
       </div>
@@ -504,7 +505,8 @@
         OPERATOR: 'transfer_app_operator_v2',
         DEPARTMENT: 'transfer_app_department_v2',
         SOURCE_WH: 'transfer_app_source_wh_v2',
-        DEST_WH: 'transfer_app_dest_wh_v2'
+        DEST_WH: 'transfer_app_dest_wh_v2',
+        MASTER_CACHE: 'transfer_app_master_cache_v2'
       };
 
       let state = {
@@ -553,6 +555,7 @@
         lastScannedInfo: document.getElementById('lastScannedInfo'),
         productMasterCount: document.getElementById('productMasterCount'),
         refreshMasterBtn: document.getElementById('refreshMasterBtn'),
+        refreshMasterSpinner: document.getElementById('refreshMasterSpinner'),
 
         transferTableBody: document.getElementById('transferTableBody'),
         emptyListNotice: document.getElementById('emptyListNotice'),
@@ -630,6 +633,15 @@
 
           state.sourceWarehouse = localStorage.getItem(STORAGE_KEYS.SOURCE_WH) || '';
           state.destWarehouse = localStorage.getItem(STORAGE_KEYS.DEST_WH) || '';
+
+          const cache = localStorage.getItem(STORAGE_KEYS.MASTER_CACHE);
+          if (cache) {
+            const parsed = JSON.parse(cache);
+            if (parsed.productMaster) state.productMaster = parsed.productMaster;
+            if (parsed.warehouseMaster) state.warehouseMaster = parsed.warehouseMaster;
+            updateWarehouseDropdowns();
+            updateMasterCounters();
+          }
         } catch (e) {
           console.error('localStorage読み込みエラー:', e);
         }
@@ -647,45 +659,69 @@
         }
       }
 
-      // ----------------------------------------------------------------------
-      // GAS 通信レイヤー (fetch API 経由)
-      // ----------------------------------------------------------------------
-
-      async function fetchMasterData() {
-        showToast('マスタデータを読み込み中...', 'info');
-
+      function saveMasterCache() {
         try {
-          const resProduct = await fetch(`${GAS_WEB_APP_URL}?action=getMasterData`);
-          const jsonProduct = await resProduct.json();
-
-          const resWh = await fetch(`${GAS_WEB_APP_URL}?action=getWarehouseMaster`);
-          const jsonWh = await resWh.json();
-
-          if (jsonProduct.success && jsonWh.success) {
-            handleMasterSuccess({
-              success: true,
-              productMaster: jsonProduct.data || [],
-              warehouseMaster: jsonWh.data || []
-            });
-          } else {
-            fallbackLocalMaster();
-          }
-        } catch (err) {
-          fallbackLocalMaster();
-        }
+          localStorage.setItem(STORAGE_KEYS.MASTER_CACHE, JSON.stringify({
+            productMaster: state.productMaster,
+            warehouseMaster: state.warehouseMaster
+          }));
+        } catch (e) {}
       }
 
-      function handleMasterSuccess(response) {
-        if (response && response.success) {
-          state.productMaster = response.productMaster || response.data || [];
-          state.warehouseMaster = response.warehouseMaster || [];
-          updateWarehouseDropdowns();
-          updateMasterCounters();
-          renderTable();
-          showToast('マスタデータを取得しました。', 'success');
-        } else {
-          fallbackLocalMaster();
-        }
+      // ----------------------------------------------------------------------
+      // GAS 通信レイヤー (JSONP / CORS対応)
+      // ----------------------------------------------------------------------
+
+      function fetchMasterData() {
+        showToast('マスタデータを最新化中...', 'info');
+        el.refreshMasterSpinner.classList.remove('hidden');
+
+        // CORSエラー回避のため、JSONP形式の動的scriptタグ生成でデータ取得
+        const scriptP = document.createElement('script');
+        const scriptW = document.createElement('script');
+
+        window.handleProductMasterJSONP = function(res) {
+          if (res && res.success && Array.isArray(res.data)) {
+            state.productMaster = res.data.map(item => ({
+              itemCode: item.code || item.itemCode || '',
+              itemName1: item.name1 || item.itemName1 || '',
+              itemName2: item.name2 || item.itemName2 || '',
+              size: item.size || '',
+              janCode: item.jan || item.janCode || ''
+            }));
+            updateMasterCounters();
+            saveMasterCache();
+            showToast('商品マスタを最新に更新しました。', 'success');
+          }
+          el.refreshMasterSpinner.classList.add('hidden');
+          delete window.handleProductMasterJSONP;
+          scriptP.remove();
+        };
+
+        window.handleWarehouseMasterJSONP = function(res) {
+          if (res && res.success && Array.isArray(res.data)) {
+            state.warehouseMaster = res.data;
+            updateWarehouseDropdowns();
+            saveMasterCache();
+          }
+          delete window.handleWarehouseMasterJSONP;
+          scriptW.remove();
+        };
+
+        scriptP.src = `${GAS_WEB_APP_URL}?action=getMasterData&prefix=handleProductMasterJSONP`;
+        scriptW.src = `${GAS_WEB_APP_URL}?action=getWarehouseMaster&prefix=handleWarehouseMasterJSONP`;
+
+        scriptP.onerror = scriptW.onerror = function() {
+          el.refreshMasterSpinner.classList.add('hidden');
+          if (state.productMaster.length === 0) {
+            fallbackLocalMaster();
+          } else {
+            showToast('オフライン/通信制限のため、保存済みキャッシュマスタを使用します。', 'warning');
+          }
+        };
+
+        document.body.appendChild(scriptP);
+        document.body.appendChild(scriptW);
       }
 
       function fallbackLocalMaster() {
@@ -1108,7 +1144,6 @@
         try {
           const res = await fetch(GAS_WEB_APP_URL, {
             method: 'POST',
-            contentType: 'application/json',
             body: JSON.stringify(payload)
           });
           const json = await res.json();
@@ -1214,7 +1249,6 @@
         try {
           const res = await fetch(GAS_WEB_APP_URL, {
             method: 'POST',
-            contentType: 'application/json',
             body: JSON.stringify({ action: 'saveWarehouseMaster', data: [newWh] })
           });
           const json = await res.json();
