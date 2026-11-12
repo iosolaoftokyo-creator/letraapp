@@ -2,1407 +2,837 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>在庫移動依頼リスト作成 WEBアプリ</title>
-
-  <!-- Tailwind CSS CDN -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>仕入カウント確認アプリ</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Html5Qrcode Library -->
-  <script src="https://unpkg.com/html5-qrcode"></script>
-
   <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    /* レティクルレーザー照射アニメーション */
-    @keyframes laser-sweep {
-      0% { top: 12%; opacity: 0.7; }
-      50% { top: 88%; opacity: 1; }
-      100% { top: 12%; opacity: 0.7; }
-    }
-    .laser-beam {
-      position: absolute;
-      left: 6%;
-      right: 6%;
-      height: 3px;
-      background: linear-gradient(90deg, transparent, #4f46e5, #818cf8, #4f46e5, transparent);
-      box-shadow: 0 0 14px 2px rgba(99, 102, 241, 0.9);
-      animation: laser-sweep 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-
-    button, input, select, textarea {
-      touch-action: manipulation;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    /* A4縦印刷用スタイルシート */
-    @media print {
-      @page {
-        size: A4 portrait;
-        margin: 12mm 10mm;
-      }
-      body {
-        background: #ffffff !important;
-        color: #000000 !important;
-        font-size: 11pt !important;
-        padding: 0 !important;
-      }
-      .no-print, header, nav, #viewSettings, #viewScanner, #printExclude {
-        display: none !important;
-      }
-      .print-only {
-        display: block !important;
-      }
-      .print-container {
-        width: 100% !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        box-shadow: none !important;
-      }
-      table {
-        width: 100% !important;
-        border-collapse: collapse !important;
-      }
-      th, td {
-        border: 1px solid #333333 !important;
-        padding: 5px 8px !important;
-        color: #000000 !important;
-      }
-      th {
-        background-color: #f3f4f6 !important;
-        font-weight: bold !important;
-      }
-    }
-    .print-only {
-      display: none;
-    }
+    body { -webkit-tap-highlight-color: transparent; }
+    .pb-safe { padding-bottom: env(safe-area-inset-bottom, 1rem); }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
-<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col">
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex flex-col select-none">
 
-  <!-- ヘッダー -->
-  <header class="no-print bg-slate-900 text-white shadow-md sticky top-0 z-30">
-    <div class="max-w-7xl mx-auto px-4 py-3 sm:px-6 flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center space-x-3">
-        <div class="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-lg shadow-inner">
-          📦
-        </div>
-        <div>
-          <h1 class="text-base sm:text-lg font-bold tracking-tight">在庫移動依頼リスト作成</h1>
-          <p class="text-xs text-slate-400">Google スプレッドシート連携システム</p>
-        </div>
-      </div>
-
-      <div class="flex items-center space-x-3 text-xs sm:text-sm">
-        <div class="flex items-center bg-slate-800 rounded-lg px-3 py-1.5 border border-slate-700">
-          <span class="text-slate-400 mr-2">作業者:</span>
-          <input type="text" id="operatorNameInput" placeholder="氏名を入力" 
-                 class="bg-transparent text-white font-medium focus:outline-none w-24 sm:w-32 border-b border-transparent focus:border-indigo-400 text-xs sm:text-sm" />
-        </div>
-        <div id="connectionStatus" class="flex items-center px-2.5 py-1 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 text-xs">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse mr-1.5"></span>
-          <span>オンライン</span>
-        </div>
-      </div>
+  <!-- ヘッダー（設定・更新ボタンを右側に集約） -->
+  <header class="bg-slate-900 text-white px-4 py-3 shadow-md flex items-center justify-between shrink-0">
+    <div class="flex items-center gap-2">
+      <span class="text-xl">📦</span>
+      <h1 class="text-sm font-black tracking-wider">仕入カウント確認アプリ</h1>
+    </div>
+    <div class="flex items-center gap-2">
+      <button onclick="openPLListModal()" class="px-2.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold active:scale-95 flex items-center gap-1 shadow">
+        <span>📂 取込PL一覧</span>
+      </button>
+      <button onclick="fetchMasterFromGas(false)" class="p-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs active:scale-95 shadow" title="商品マスタ更新">
+        🔄マスタ
+      </button>
+      <button onclick="refreshPLDataFromGas(false)" class="p-1.5 rounded-xl bg-sky-700 hover:bg-sky-600 text-white text-xs active:scale-95 shadow" title="PLデータ取込">
+        📥取込
+      </button>
+      <button onclick="openSettingsModal()" class="p-1.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white border border-slate-700 active:scale-95" title="設定">
+        ⚙️
+      </button>
     </div>
   </header>
 
-  <!-- メインコンテンツ -->
-  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 space-y-4">
+  <!-- メインコンテンツ領域 -->
+  <main class="flex-1 flex flex-col overflow-hidden relative">
 
-    <!-- 1. 部署・移動元・移動先 選択パネル -->
-    <section class="no-print bg-white rounded-xl shadow-sm border border-slate-200 p-4 transition-all">
-      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-        
-        <!-- 部署選択 -->
-        <div class="md:col-span-3">
-          <label for="deptSelect" class="block text-xs font-semibold text-slate-600 mb-1">
-            ① 担当部署 <span class="text-rose-500">*</span>
-          </label>
-          <div class="relative">
-            <select id="deptSelect" class="w-full bg-slate-50 border border-slate-300 text-slate-900 rounded-lg p-2.5 text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none">
-              <option value="催事">催事</option>
-              <option value="WEB">WEB</option>
-              <option value="卸委託">卸委託</option>
-              <option value="卸受注">卸受注</option>
-              <option value="flower">flower</option>
-            </select>
-            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500 text-xs">▼</div>
-          </div>
+    <!-- VIEW 1: PL入力画面（メイン） -->
+    <div id="view-pl-entry" class="flex-1 flex flex-col justify-between p-4 pb-safe overflow-y-auto">
+      <div class="space-y-3">
+        <!-- マスタ連携状況カード -->
+        <div class="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-700">📌 商品マスタ状況</span>
+          <span id="card-master-count" class="text-xs text-emerald-700 font-mono font-bold">マスタ未読込</span>
         </div>
 
-        <!-- 移動元倉庫 -->
-        <div class="md:col-span-4">
-          <label for="sourceWarehouseSelect" class="block text-xs font-semibold text-slate-600 mb-1">
-            ② 移動元倉庫 (From) <span class="text-rose-500">*</span>
-          </label>
-          <div class="relative">
-            <select id="sourceWarehouseSelect" class="w-full bg-blue-50/50 border border-blue-200 text-slate-900 rounded-lg p-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none">
-            </select>
-            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500 text-xs">▼</div>
+        <!-- 本日の進捗サマリー（横スクロール式 1列） -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between px-1">
+            <span class="text-xs font-bold text-slate-600">本日の進捗サマリー（横スクロール）</span>
+            <button onclick="openPLListModal()" class="text-xs text-sky-600 font-bold hover:underline">全リスト表示 ➔</button>
           </div>
-        </div>
-
-        <!-- 入れ替えボタン -->
-        <div class="md:col-span-1 flex justify-center py-1 md:py-0">
-          <button type="button" id="swapWarehouseBtn" title="移動元と移動先を入れ替える"
-                  class="w-full md:w-10 h-10 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 border border-slate-300 rounded-lg flex items-center justify-center font-bold transition shadow-sm active:scale-95 text-sm">
-            <span class="inline-block transform rotate-90 md:rotate-0">⇄</span>
-            <span class="md:hidden ml-1 text-xs">倉庫を入れ替える</span>
-          </button>
-        </div>
-
-        <!-- 移動先倉庫 -->
-        <div class="md:col-span-4">
-          <div class="flex items-center justify-between mb-1">
-            <label for="destWarehouseSelect" class="block text-xs font-semibold text-slate-600">
-              ③ 移動先倉庫 (To) <span class="text-rose-500">*</span>
-            </label>
-            <button type="button" id="openAddWarehouseModalBtn" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
-              + 倉庫マスタ追加
-            </button>
+          <div id="pl-dashboard-scroll" class="flex gap-2.5 overflow-x-auto no-scrollbar py-1 px-0.5">
+            <div class="text-center py-3 px-6 text-xs text-slate-400 bg-white rounded-xl border border-slate-200 shrink-0">PLデータ未取込（「📥取込」を押してください）</div>
           </div>
-          <div class="relative">
-            <select id="destWarehouseSelect" class="w-full bg-emerald-50/50 border border-emerald-200 text-slate-900 rounded-lg p-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none">
-            </select>
-            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500 text-xs">▼</div>
-          </div>
-        </div>
-
-      </div>
-    </section>
-
-    <!-- 2. バーコードスキャン & 手入力エリア -->
-    <section class="no-print grid grid-cols-1 lg:grid-cols-12 gap-4">
-      
-      <!-- カメラ・スキャナーコンテナ -->
-      <div class="lg:col-span-7 bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col justify-between">
-        <div>
-          <div class="flex items-center justify-between mb-2">
-            <h2 class="text-sm font-bold text-slate-800 flex items-center">
-              <span class="mr-1.5">📷</span> バーコード連続スキャン (JAN / 商品コード)
-            </h2>
-            <div class="flex items-center space-x-2">
-              <button id="toggleCameraBtn" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition active:scale-95 flex items-center">
-                <span id="cameraBtnIcon" class="mr-1">▶</span>
-                <span id="cameraBtnText">カメラ起動</span>
-              </button>
-            </div>
-          </div>
-
-          <div id="readerContainer" class="relative bg-slate-950 rounded-lg overflow-hidden flex flex-col items-center justify-center min-h-[220px] max-h-[340px] text-slate-400">
-            <div id="reader" class="w-full"></div>
-            <div id="readerPlaceholder" class="text-center p-6">
-              <div class="text-4xl mb-2">📸</div>
-              <p class="text-sm font-medium text-slate-300">「カメラ起動」をタップしてスキャン開始</p>
-              <p class="text-xs text-slate-500 mt-1">端末のカメラへのアクセス許可が必要です</p>
-            </div>
-            
-            <div id="scanOverlay" class="hidden pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div class="w-64 h-36 border-2 border-indigo-400 rounded-lg shadow-lg relative animate-pulse">
-                <div class="laser-beam"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-          <span>連続スキャン対応：数量確定後すぐに次をスキャン可能</span>
-          <label class="inline-flex items-center cursor-pointer">
-            <input type="checkbox" id="soundToggle" checked class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
-            <span class="ml-1.5 text-xs text-slate-600">スキャン時サウンド再生</span>
-          </label>
         </div>
       </div>
 
-      <!-- 手動入力エリア -->
-      <div class="lg:col-span-5 bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col justify-between">
-        <div>
-          <h2 class="text-sm font-bold text-slate-800 mb-2 flex items-center">
-            <span class="mr-1.5">⌨️</span> JAN・商品コード手動入力
-          </h2>
-          <form id="manualInputForm" class="space-y-3">
-            <div>
-              <label for="manualCodeInput" class="block text-xs font-semibold text-slate-600 mb-1">
-                JANコード または 商品コード
-              </label>
-              <div class="flex space-x-2">
-                <input type="text" id="manualCodeInput" placeholder="例: 4580123456789" autocomplete="off"
-                       class="flex-1 bg-slate-50 border border-slate-300 text-slate-900 rounded-lg p-2.5 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
-                <button type="submit" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-lg shadow-sm transition active:scale-95 whitespace-nowrap">
-                  検索・追加
-                </button>
-              </div>
-            </div>
-          </form>
-
-          <div class="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
-            <div class="text-xs font-semibold text-slate-500 mb-1">直近のスキャン情報</div>
-            <div id="lastScannedInfo" class="text-xs text-slate-600">
-              まだスキャンされていません。バーコードをかざしてください。
-            </div>
-          </div>
-        </div>
-
-        <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-          <span>マスタ登録商品数: <span id="productMasterCount" class="font-bold text-slate-700">0</span> 件</span>
-          <button id="refreshMasterBtn" type="button" class="text-indigo-600 hover:text-indigo-800 font-bold flex items-center space-x-1">
-            <span id="refreshMasterSpinner" class="hidden animate-spin">🔄</span>
-            <span>マスタ更新</span>
-          </button>
-        </div>
-      </div>
-
-    </section>
-
-    <!-- 3. 移動依頼作成リスト (テーブル) -->
-    <section class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print-container">
-      
-      <div class="no-print p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70">
-        <div class="flex items-center space-x-3">
-          <h2 class="text-base font-bold text-slate-800 flex items-center">
-            <span>📋 移動依頼リスト</span>
-          </h2>
-          <span id="badgeItemCount" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800">
-            0 件
+      <!-- テンキー入力エリア -->
+      <div class="my-auto py-4 max-w-sm mx-auto w-full">
+        <div class="text-center mb-2">
+          <span class="text-xs font-bold text-slate-600 uppercase tracking-widest block">
+            検品するPL番号をテンキー入力
           </span>
-          <span id="badgeTotalQty" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
-            合計 0 点
-          </span>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-2">
-          <input type="text" id="listSearchInput" placeholder="リスト内検索..." 
-                 class="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-28 sm:w-36" />
-
-          <button type="button" id="exportCsvBtn" title="CSVダウンロード"
-                  class="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-medium rounded-lg shadow-sm transition active:scale-95 flex items-center">
-            <span class="mr-1">📥</span> CSV出力
-          </button>
-
-          <button type="button" id="printListBtn" title="A4縦印刷"
-                  class="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-medium rounded-lg shadow-sm transition active:scale-95 flex items-center">
-            <span class="mr-1">🖨️</span> 印刷
-          </button>
-
-          <button type="button" id="openClearModalBtn" title="リストを一括クリア"
-                  class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg shadow-sm transition active:scale-95 flex items-center">
-            <span class="mr-1">🗑️</span> 全削除
-          </button>
-
-          <button type="button" id="submitToSheetBtn"
-                  class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition active:scale-95 flex items-center disabled:opacity-50 disabled:cursor-not-allowed">
-            <span class="mr-1">🚀</span> スプレッドシートへ送信
-          </button>
-        </div>
-      </div>
-
-      <!-- 印刷用ヘッダー (A4専用) -->
-      <div class="print-only p-4 mb-2">
-        <div class="flex justify-between items-start border-b-2 border-slate-900 pb-2">
-          <div>
-            <h1 class="text-xl font-bold">在庫移動依頼書</h1>
-            <p class="text-xs text-slate-600 mt-1">
-              発行日: <span id="printDate"></span> | 担当部署: <span id="printDept" class="font-bold"></span>
-            </p>
-          </div>
-          <div class="text-right text-xs">
-            <p>作業者: <span id="printOperator" class="font-bold underline"></span></p>
-            <p class="mt-1">合計点数: <span id="printTotalQty" class="font-bold text-sm"></span> 点</p>
+          <div class="mt-1.5 h-16 bg-white border-2 border-slate-300 rounded-2xl flex items-center justify-center px-4 shadow-sm">
+            <span id="pl-keypad-display" class="text-3xl font-black font-mono tracking-widest text-slate-400">
+              PL番号を入力
+            </span>
           </div>
         </div>
-      </div>
 
-      <div class="overflow-x-auto">
-        <table class="w-full text-left text-xs border-collapse">
-          <thead>
-            <tr class="bg-slate-900 text-white border-b border-slate-800">
-              <th class="py-2.5 px-3 w-10 text-center font-bold">No</th>
-              <th class="py-2.5 px-3 min-w-[110px] font-bold">移動元</th>
-              <th class="py-2.5 px-3 min-w-[110px] font-bold">移動先</th>
-              <th class="py-2.5 px-3 min-w-[90px] font-bold">商品コード</th>
-              <th class="py-2.5 px-3 min-w-[140px] font-bold">商品名1</th>
-              <th class="py-2.5 px-3 min-w-[100px] font-bold">商品名2</th>
-              <th class="py-2.5 px-3 min-w-[60px] text-center font-bold">サイズ</th>
-              <th class="py-2.5 px-3 min-w-[70px] text-right font-bold">数量</th>
-              <th class="py-2.5 px-3 min-w-[120px] font-bold">備考</th>
-              <th class="py-2.5 px-3 w-20 text-center font-bold no-print">操作</th>
-            </tr>
-          </thead>
-          <tbody id="transferTableBody" class="divide-y divide-slate-200 bg-white">
-          </tbody>
-        </table>
-      </div>
-
-      <div id="emptyListNotice" class="text-center py-12 px-4">
-        <div class="text-4xl mb-2 text-slate-300">📦</div>
-        <p class="text-sm font-semibold text-slate-600">依頼リストにアイテムがありません</p>
-        <p class="text-xs text-slate-400 mt-1">バーコードをスキャンするか、商品コードを手入力して追加してください</p>
-      </div>
-
-      <div class="p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between text-xs text-slate-600">
-        <div>
-          <span>登録中アイテム: <strong id="summaryRowCount" class="text-slate-900">0</strong> 件</span>
+        <div class="grid grid-cols-3 gap-2">
+          <button onclick="pressPlKeypad('1')" class="h-14 bg-white hover:bg-slate-100 active:bg-slate-200 rounded-2xl text-2xl font-black text-slate-800 shadow-sm active:scale-95 transition-transform flex items-center justify-center border border-slate-300">1</button>
+          <button onclick="pressPlKeypad('2')" class="h-14 bg-white hover:bg-slate-100 active:bg-slate-200 rounded-2xl text-2xl font-black text-slate-800 shadow-sm active:scale-95 transition-transform flex items-center justify-center border border-slate-300">2</button>
+          <button onclick="pressPlKeypad('3')" class="h-14 bg-white hover:bg-slate-100 active:bg-slate-200 rounded-2xl text-2xl font-black text-slate-800 shadow-sm active:scale-95 transition-transform flex items-center justify-center border border-slate-300">3</button>
+          <button onclick="pressPlKeypad('4')" class="h-14 bg-white hover:bg-slate-100 active:bg-slate-200 rounded-2xl text-2xl font-black text-slate-800 shadow-sm active:scale-95 transition-transform flex items-center justify-center border border-slate-300">4</button>
+          <button onclick="pressPlKeypad('5')" class="h-14 bg-white hover:bg-slate-100 active:bg-slate-200 rounded-2xl text-2xl font-black text-slate-800 shadow-sm active:scale-95 transition-transform flex items-center justify-center border border-slate-300">5</button>
+          <button onclick="pressPlKeypad('6')" class="h-14 bg-white hover:bg-slate-100 active:bg-slate-200 rounded-2xl text-2xl font-black text-slate-800 shadow-sm active:scale-95 transition-transform flex items-center justify-center border border-slate-300">6</button>
+          <button onclick="pressPlKeypad('7')" class="h-14 bg-white hover:bg-slate-100 active:bg-slate-200 rounded-2xl text-2xl font-black text-slate-800 shadow-sm active:scale-95 transition-transform flex items-center justify-center border border-slate-300">7</button>
+          <button onclick="pressPlKeypad('8')" class="h-14 bg-white hover:bg-slate-100 active:bg-slate-200 rounded-2xl text-2xl font-black text-slate-800 shadow-sm active:scale-95 transition-transform flex items-center justify-center border border-slate-300">8</button>
+          <button onclick="pressPlKeypad('9')" class="h-14 bg-white hover:bg-slate-100 active:bg-slate-200 rounded-2xl text-2xl font-black text-slate-800 shadow-sm active:scale-95 transition-transform flex items-center justify-center border border-slate-300">9</button>
+          <button onclick="clearPlKeypad()" class="h-14 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl text-xs font-black text-rose-600 shadow-sm active:scale-95 transition-transform flex items-center justify-center border border-slate-300">C</button>
+          <button onclick="pressPlKeypad('0')" class="h-14 bg-white hover:bg-slate-100 active:bg-slate-200 rounded-2xl text-2xl font-black text-slate-800 shadow-sm active:scale-95 transition-transform flex items-center justify-center border border-slate-300">0</button>
+          <button onclick="backspacePlKeypad()" class="h-14 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl text-sm font-bold text-slate-700 shadow-sm active:scale-95 transition-transform flex items-center justify-center border border-slate-300">⌫</button>
         </div>
+
+        <button onclick="confirmPlKeypad()" class="w-full mt-3.5 h-14 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-black text-base rounded-2xl shadow-md flex items-center justify-center gap-2 transition-all">
+          <span>PL番号を確定して検品開始</span>
+          <span>➔</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- VIEW 2: 検品画面 -->
+    <div id="view-inspecting" class="flex-1 flex flex-col justify-between overflow-hidden hidden">
+      <div class="px-4 py-2.5 bg-white border-b border-slate-200 flex items-center justify-between text-xs shadow-sm">
         <div>
-          <span>総数量: <strong id="summaryTotalQty" class="text-base text-indigo-600 font-bold">0</strong> 点</span>
+          <span class="text-[11px] text-slate-500 block">対象PL</span>
+          <span id="inspect-pl-label" class="font-mono font-black text-slate-900 text-base">PL -</span>
         </div>
+        <button onclick="backToPlEntry()" class="px-3 py-1 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold text-slate-700">PL選択に戻る</button>
       </div>
 
-    </section>
+      <div id="inspection-cards-container" class="flex-1 overflow-y-auto p-3.5 space-y-3"></div>
+
+      <div class="p-3.5 bg-white border-t border-slate-200 pb-safe shadow-lg">
+        <button id="btn-goto-confirm" onclick="goToConfirmScreen()" disabled class="w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 transition-all shadow-md bg-slate-200 text-slate-400 cursor-not-allowed">
+          <span>送信前の最終確認プレビューへ</span>
+          <span>➔</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- VIEW 3: 最終確認プレビュー画面 -->
+    <div id="view-confirm" class="flex-1 flex flex-col justify-between overflow-hidden hidden">
+      <div class="p-3.5 bg-white border-b border-slate-200 flex items-center justify-between shadow-sm">
+        <div>
+          <h3 class="text-sm font-bold text-slate-900">送信前 最終確認リスト</h3>
+          <p id="confirm-pl-sub" class="text-xs text-slate-500">PL の検品結果</p>
+        </div>
+        <button onclick="backToInspectionScreen()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold text-slate-700">修正に戻る</button>
+      </div>
+
+      <div id="confirm-items-container" class="flex-1 overflow-y-auto p-3.5 space-y-2.5"></div>
+
+      <div class="p-3.5 bg-white border-t border-slate-200 pb-safe space-y-2 shadow-lg">
+        <div class="flex items-center gap-2">
+          <label class="text-xs font-bold text-slate-700 shrink-0">作業責任者:</label>
+          <input type="text" id="inspector-name-input" value="伊尾" class="flex-1 px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold bg-slate-50">
+        </div>
+        <button onclick="submitInspectionData()" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-base rounded-2xl shadow-md active:scale-98 transition-all">
+          検品結果をスプレッドシートに送信・保存 🚀
+        </button>
+      </div>
+    </div>
 
   </main>
 
-  <footer class="no-print bg-slate-900 text-slate-400 text-xs py-3 text-center border-t border-slate-800">
-    <p>© 在庫移動依頼システム | Google Apps Script & Spreadsheet</p>
-  </footer>
-
-  <!-- 数量入力モーダル -->
-  <div id="quantityModal" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200">
-      <div class="bg-indigo-600 px-4 py-3 text-white flex items-center justify-between">
-        <h3 class="font-bold text-sm flex items-center">
-          <span class="mr-1.5">📦</span> 数量入力・確認
-        </h3>
-        <button type="button" id="closeQtyModalBtn" class="text-white hover:text-indigo-200 text-lg leading-none font-bold">×</button>
+  <!-- 取込済みPLデータ一覧モーダル -->
+  <div id="modal-pl-list" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+      <div class="p-4 bg-slate-900 text-white flex items-center justify-between">
+        <h3 class="font-bold text-sm flex items-center gap-2"><span>📂</span> 取込済みPLデータ一覧</h3>
+        <button onclick="closePLListModal()" class="text-slate-400 hover:text-white text-lg font-bold px-2">✕</button>
       </div>
 
-      <div class="p-4 space-y-3">
-        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1">
-          <div class="flex justify-between items-baseline">
-            <span class="font-bold text-slate-900 text-sm" id="modalItemName1">商品名1</span>
-            <span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-semibold text-[11px]" id="modalSize">Free</span>
-          </div>
-          <div class="text-slate-600" id="modalItemName2">カラー / 規格</div>
-          <div class="flex justify-between text-slate-500 pt-1 border-t border-slate-200 font-mono text-[11px]">
-            <span>品番: <strong id="modalItemCode" class="text-slate-700">ITEM-001</strong></span>
-            <span>JAN: <strong id="modalJanCode" class="text-slate-700">-</strong></span>
-          </div>
-        </div>
-
-        <div>
-          <label for="modalQtyInput" class="block text-xs font-bold text-slate-700 mb-1">
-            数量 (個)
-          </label>
-          <div class="flex items-center space-x-2">
-            <button type="button" id="qtyMinusBtn" class="w-10 h-10 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-lg active:scale-95 transition">-</button>
-            <input type="number" id="modalQtyInput" min="1" max="9999" value="1" 
-                   class="flex-1 text-center font-bold text-2xl text-slate-900 bg-slate-50 border border-slate-300 rounded-lg py-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-            <button type="button" id="qtyPlusBtn" class="w-10 h-10 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-lg active:scale-95 transition">+</button>
-          </div>
-
-          <div class="grid grid-cols-5 gap-1.5 mt-2">
-            <button type="button" class="quick-add-btn py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-700 border border-slate-200 active:scale-95" data-val="1">+1</button>
-            <button type="button" class="quick-add-btn py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-700 border border-slate-200 active:scale-95" data-val="5">+5</button>
-            <button type="button" class="quick-add-btn py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-700 border border-slate-200 active:scale-95" data-val="10">+10</button>
-            <button type="button" class="quick-add-btn py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-700 border border-slate-200 active:scale-95" data-val="50">+50</button>
-            <button type="button" id="quickClearBtn" class="py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-xs font-bold border border-rose-200 active:scale-95">C</button>
-          </div>
-        </div>
-
-        <div>
-          <label for="modalNoteInput" class="block text-xs font-semibold text-slate-600 mb-1">
-            備考 (任意)
-          </label>
-          <input type="text" id="modalNoteInput" placeholder="例: 急ぎ / サンプル / 不良交換"
-                 class="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-        </div>
+      <!-- サマリーボックス -->
+      <div class="px-4 py-2.5 bg-emerald-50 border-b border-emerald-200 text-xs flex items-center justify-around font-bold text-emerald-900">
+        <div>予定総数: <span id="summary-total-plan" class="font-mono text-sm">0</span></div>
+        <div>｜</div>
+        <div>カウント総数(検品済): <span id="summary-total-actual" class="font-mono text-sm text-emerald-700 font-black">0</span></div>
       </div>
 
-      <div class="p-3 bg-slate-50 border-t border-slate-200 flex space-x-2">
-        <button type="button" id="cancelQtyModalBtn" class="flex-1 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold active:scale-95">
-          キャンセル
-        </button>
-        <button type="button" id="confirmQtyModalBtn" class="flex-1 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md active:scale-95">
-          リストに追加 (Enter)
-        </button>
+      <div class="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-1.5 bg-slate-200 p-1 rounded-xl">
+          <button id="filter-all-btn" onclick="setPLFilter('all')" class="px-3 py-1 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-sm transition-all">すべて</button>
+          <button id="filter-uncounted-btn" onclick="setPLFilter('uncounted')" class="px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition-all">未検品のみ</button>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button onclick="refreshPLDataFromGas(true)" class="px-2.5 py-1.5 bg-sky-600 text-white text-xs font-bold rounded-xl shadow active:scale-95">⟳ 更新</button>
+          <button onclick="purgeAllPLData()" class="px-2.5 py-1.5 bg-rose-600 text-white text-xs font-bold rounded-xl shadow active:scale-95">🗑️ 全削除</button>
+        </div>
+      </div>
+      <div id="pl-list-modal-body" class="p-4 overflow-y-auto flex-1 space-y-2.5"></div>
+      <div class="p-3 bg-white border-t border-slate-200 flex justify-end">
+        <button onclick="closePLListModal()" class="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs rounded-xl">閉じる</button>
       </div>
     </div>
   </div>
 
-  <!-- 倉庫コード新規追加モーダル -->
-  <div id="addWarehouseModal" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200">
-      <div class="bg-slate-900 px-4 py-3 text-white flex items-center justify-between">
-        <h3 class="font-bold text-sm">🏬 倉庫マスタ簡易新規追加</h3>
-        <button type="button" id="closeAddWarehouseModalBtn" class="text-white hover:text-slate-300 text-lg leading-none font-bold">×</button>
+  <!-- 差異理由3択モーダル -->
+  <div id="modal-discrepancy" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+      <div class="p-4 bg-amber-600 text-white flex items-center justify-between">
+        <h3 class="font-bold text-sm">⚠️ 差異理由の選択</h3>
+        <button onclick="closeDiscrepancyModal()" class="text-amber-200 hover:text-white text-lg font-bold px-2">✕</button>
       </div>
-      <form id="addWarehouseForm" class="p-4 space-y-3">
+      <div class="p-4 overflow-y-auto space-y-4 flex-1">
         <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1">所属部署</label>
-          <select id="newWhDept" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-medium">
-            <option value="共通">共通 (全社共通倉庫)</option>
-            <option value="催事">催事</option>
-            <option value="WEB">WEB</option>
-            <option value="卸委託">卸委託</option>
-            <option value="卸受注">卸受注</option>
-            <option value="flower">flower</option>
+          <label class="text-xs font-bold text-slate-700 block mb-1">差異理由（3択）:</label>
+          <select id="disc-reason-select" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold bg-white text-slate-800">
+            <option value="過不足">過不足 (通常の超過・不足)</option>
+            <option value="商品違い">商品違い (異なる商品の混入)</option>
+            <option value="登録なし商品">登録なし商品 (自由入力)</option>
           </select>
         </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1">倉庫コード <span class="text-rose-500">*</span></label>
-          <input type="text" id="newWhCode" placeholder="例: 4103" required
-                 class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+        <div id="disc-unregistered-container" class="hidden">
+          <label class="text-xs font-bold text-slate-700 block mb-1">登録なし商品名・内容 (自由入力):</label>
+          <input type="text" id="disc-unregistered-input" placeholder="例: 未登録の別カラー・商品など" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-800">
         </div>
         <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1">倉庫名称 <span class="text-rose-500">*</span></label>
-          <input type="text" id="newWhName" placeholder="例: 催事C店（名古屋会場）" required
-                 class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+          <label class="text-xs font-bold text-slate-700 block mb-1">実数・カウント数量:</label>
+          <input type="number" id="disc-qty-input" class="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-sm font-bold bg-white text-slate-800" value="0">
         </div>
-        <div class="pt-2 flex space-x-2">
-          <button type="button" id="cancelAddWarehouseBtn" class="flex-1 py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold">
-            キャンセル
-          </button>
-          <button type="submit" id="submitAddWarehouseBtn" class="flex-1 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold">
-            登録実行
-          </button>
+        <div>
+          <label class="text-xs font-bold text-slate-700 block mb-1">備考メモ:</label>
+          <input type="text" id="disc-note-input" placeholder="例: カートン破損あり など" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-800">
         </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- 一斉削除確認モーダル -->
-  <div id="clearConfirmModal" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-xs w-full p-4 border border-slate-200 text-center">
-      <div class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 mx-auto flex items-center justify-center text-xl mb-3">
-        ⚠️
       </div>
-      <h3 class="font-bold text-sm text-slate-800">リストの一斉削除</h3>
-      <p class="text-xs text-slate-500 mt-1">現在の移動依頼リスト（全 <span id="clearModalCount">0</span> 件）を全て削除しますか？この操作は取り消せません。</p>
-      <div class="mt-4 flex space-x-2">
-        <button type="button" id="cancelClearBtn" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold">
-          戻る
-        </button>
-        <button type="button" id="confirmClearBtn" class="flex-1 py-2 bg-rose-600 text-white rounded-lg text-xs font-bold">
-          一斉削除
-        </button>
+      <div class="p-3 bg-white border-t border-slate-200 flex justify-end gap-2">
+        <button onclick="closeDiscrepancyModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs rounded-xl">キャンセル</button>
+        <button onclick="proceedFromDiscrepancy()" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow">次へすすむ ➔</button>
       </div>
     </div>
   </div>
 
-  <!-- ローディングオーバーレイ -->
-  <div id="loadingOverlay" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4 hidden text-white text-center">
-    <div class="w-12 h-12 border-4 border-indigo-400 border-t-transparent rounded-full animate-spin mb-3"></div>
-    <div class="font-bold text-sm tracking-wide" id="loadingText">スプレッドシートへ書き込み中...</div>
-    <div class="text-xs text-slate-300 mt-1">排他ロック処理を実行しています。しばらくお待ちください。</div>
+  <!-- 商品検索モーダル（スペース区切りAND検索 ＆ 最大15件表示対応） -->
+  <div id="modal-item-search" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+      <div class="p-4 bg-slate-900 text-white flex items-center justify-between">
+        <h3 class="font-bold text-sm flex items-center gap-2"><span>🔍</span> 商品検索（バーコード読込エラー・確認用）</h3>
+        <button onclick="closeItemSearchModal()" class="text-slate-400 hover:text-white text-lg font-bold px-2">✕</button>
+      </div>
+      <div class="p-3 bg-slate-50 border-b border-slate-200 space-y-2">
+        <input type="text" id="search-keyword-input" oninput="filterMasterList(this.value)" placeholder="例: ROMBO ORG M （スペース区切りでAND検索）" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-xs bg-white font-medium">
+        <p class="text-[10px] text-slate-500">※商品名・カラー・サイズをスペース区切りで入力すると絞り込まれます（最大15件表示）</p>
+      </div>
+      <div id="item-search-results" class="p-3 overflow-y-auto flex-1 space-y-2"></div>
+      <div class="p-3 bg-white border-t border-slate-200 flex justify-end">
+        <button onclick="closeItemSearchModal()" class="px-4 py-2 bg-slate-200 text-slate-800 font-bold text-xs rounded-xl">閉じる</button>
+      </div>
+    </div>
   </div>
 
-  <!-- トースト通知コンテナ -->
-  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+  <!-- 設定モーダル -->
+  <div id="modal-settings" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="font-black text-sm text-slate-900">⚙️ アプリ設定</h3>
+        <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-slate-700 font-bold">✕</button>
+      </div>
+      <div>
+        <label class="text-xs font-bold text-slate-700 block mb-1">GAS Web App URL:</label>
+        <input type="text" id="settings-gas-url" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono" placeholder="https://script.google.com/macros/s/.../exec">
+      </div>
+      <button onclick="saveSettings()" class="w-full py-3 bg-slate-900 text-white font-bold text-xs rounded-xl shadow">設定を保存</button>
+    </div>
+  </div>
 
-  <!-- JavaScript アプリケーションコアロジック -->
+  <!-- JavaScript制御ロジック -->
   <script>
-    (function() {
-      // ----------------------------------------------------------------------
-      // GAS デプロイ済み Web API URL
-      // ----------------------------------------------------------------------
-      const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwjleEuc_9S32z9wEsiDotXrAEy8-_FNK3fIpR8CJ1WO0p7rdceHS4iJJavQpoqtueP/exec";
+    let state = {
+      gasUrl: localStorage.getItem('gas_url') || '',
+      currentView: 'view-pl-entry',
+      plKeypadVal: '',
+      activePlNo: null,
+      plList: [],
+      masterList: [],
+      currentPlItems: [],
+      inspectionResults: {},
+      activeDiscIndex: null,
+      tempDiscData: null,
+      plFilterMode: 'all' // 'all' or 'uncounted'
+    };
 
-      const STORAGE_KEYS = {
-        ITEMS: 'transfer_app_items_v2',
-        OPERATOR: 'transfer_app_operator_v2',
-        DEPARTMENT: 'transfer_app_department_v2',
-        SOURCE_WH: 'transfer_app_source_wh_v2',
-        DEST_WH: 'transfer_app_dest_wh_v2',
-        MASTER_CACHE: 'transfer_app_master_cache_v2'
-      };
-
-      let state = {
-        departments: ['催事', 'WEB', '卸委託', '卸受注', 'flower'],
-        currentDepartment: '催事',
-        operatorName: '',
-        sourceWarehouse: '',
-        destWarehouse: '',
-        productMaster: [],
-        warehouseMaster: [],
-        items: [],
-        scanner: null,
-        isScanning: false,
-        pendingScannedProduct: null,
-        editItemIndex: null
-      };
-
-      const DEFAULT_COMMON_WAREHOUSES = [
-        { department: '共通', code: '1000', name: '物流倉庫' },
-        { department: '共通', code: '1006', name: '直し倉庫' },
-        { department: '共通', code: '1008', name: 'B品倉庫' },
-        { department: '共通', code: '4000', name: '催事倉庫' },
-        { department: '共通', code: '1002', name: '卸委託' },
-        { department: '共通', code: '1003', name: '卸受注' },
-        { department: '共通', code: '500008', name: 'WEB倉庫' }
-      ];
-
-      const el = {
-        operatorNameInput: document.getElementById('operatorNameInput'),
-        deptSelect: document.getElementById('deptSelect'),
-        sourceWarehouseSelect: document.getElementById('sourceWarehouseSelect'),
-        destWarehouseSelect: document.getElementById('destWarehouseSelect'),
-        swapWarehouseBtn: document.getElementById('swapWarehouseBtn'),
-        openAddWarehouseModalBtn: document.getElementById('openAddWarehouseModalBtn'),
-
-        toggleCameraBtn: document.getElementById('toggleCameraBtn'),
-        cameraBtnText: document.getElementById('cameraBtnText'),
-        cameraBtnIcon: document.getElementById('cameraBtnIcon'),
-        readerContainer: document.getElementById('readerContainer'),
-        readerPlaceholder: document.getElementById('readerPlaceholder'),
-        scanOverlay: document.getElementById('scanOverlay'),
-        soundToggle: document.getElementById('soundToggle'),
-
-        manualInputForm: document.getElementById('manualInputForm'),
-        manualCodeInput: document.getElementById('manualCodeInput'),
-        lastScannedInfo: document.getElementById('lastScannedInfo'),
-        productMasterCount: document.getElementById('productMasterCount'),
-        refreshMasterBtn: document.getElementById('refreshMasterBtn'),
-        refreshMasterSpinner: document.getElementById('refreshMasterSpinner'),
-
-        transferTableBody: document.getElementById('transferTableBody'),
-        emptyListNotice: document.getElementById('emptyListNotice'),
-        badgeItemCount: document.getElementById('badgeItemCount'),
-        badgeTotalQty: document.getElementById('badgeTotalQty'),
-        summaryRowCount: document.getElementById('summaryRowCount'),
-        summaryTotalQty: document.getElementById('summaryTotalQty'),
-        listSearchInput: document.getElementById('listSearchInput'),
-
-        exportCsvBtn: document.getElementById('exportCsvBtn'),
-        printListBtn: document.getElementById('printListBtn'),
-        openClearModalBtn: document.getElementById('openClearModalBtn'),
-        submitToSheetBtn: document.getElementById('submitToSheetBtn'),
-
-        quantityModal: document.getElementById('quantityModal'),
-        modalItemName1: document.getElementById('modalItemName1'),
-        modalItemName2: document.getElementById('modalItemName2'),
-        modalSize: document.getElementById('modalSize'),
-        modalItemCode: document.getElementById('modalItemCode'),
-        modalJanCode: document.getElementById('modalJanCode'),
-        modalQtyInput: document.getElementById('modalQtyInput'),
-        modalNoteInput: document.getElementById('modalNoteInput'),
-        qtyMinusBtn: document.getElementById('qtyMinusBtn'),
-        qtyPlusBtn: document.getElementById('qtyPlusBtn'),
-        quickClearBtn: document.getElementById('quickClearBtn'),
-        cancelQtyModalBtn: document.getElementById('cancelQtyModalBtn'),
-        confirmQtyModalBtn: document.getElementById('confirmQtyModalBtn'),
-        closeQtyModalBtn: document.getElementById('closeQtyModalBtn'),
-
-        addWarehouseModal: document.getElementById('addWarehouseModal'),
-        addWarehouseForm: document.getElementById('addWarehouseForm'),
-        newWhDept: document.getElementById('newWhDept'),
-        newWhCode: document.getElementById('newWhCode'),
-        newWhName: document.getElementById('newWhName'),
-        cancelAddWarehouseBtn: document.getElementById('cancelAddWarehouseBtn'),
-        closeAddWarehouseModalBtn: document.getElementById('closeAddWarehouseModalBtn'),
-
-        clearConfirmModal: document.getElementById('clearConfirmModal'),
-        clearModalCount: document.getElementById('clearModalCount'),
-        cancelClearBtn: document.getElementById('cancelClearBtn'),
-        confirmClearBtn: document.getElementById('confirmClearBtn'),
-
-        loadingOverlay: document.getElementById('loadingOverlay'),
-        loadingText: document.getElementById('loadingText'),
-        toastContainer: document.getElementById('toastContainer'),
-
-        printDate: document.getElementById('printDate'),
-        printDept: document.getElementById('printDept'),
-        printOperator: document.getElementById('printOperator'),
-        printTotalQty: document.getElementById('printTotalQty')
-      };
-
-      function init() {
-        loadLocalStorage();
-        bindEvents();
-        fetchMasterData();
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('settings-gas-url').value = state.gasUrl;
+      if (state.gasUrl) {
+        fetchMasterFromGas(true);
+      } else {
+        openSettingsModal();
       }
 
-      function loadLocalStorage() {
-        try {
-          const savedItems = localStorage.getItem(STORAGE_KEYS.ITEMS);
-          if (savedItems) state.items = JSON.parse(savedItems);
-
-          const savedOp = localStorage.getItem(STORAGE_KEYS.OPERATOR);
-          if (savedOp) {
-            state.operatorName = savedOp;
-            el.operatorNameInput.value = savedOp;
-          }
-
-          const savedDept = localStorage.getItem(STORAGE_KEYS.DEPARTMENT);
-          if (savedDept) {
-            state.currentDepartment = savedDept;
-            el.deptSelect.value = savedDept;
-          }
-
-          state.sourceWarehouse = localStorage.getItem(STORAGE_KEYS.SOURCE_WH) || '';
-          state.destWarehouse = localStorage.getItem(STORAGE_KEYS.DEST_WH) || '';
-
-          const cache = localStorage.getItem(STORAGE_KEYS.MASTER_CACHE);
-          if (cache) {
-            const parsed = JSON.parse(cache);
-            if (parsed.productMaster) state.productMaster = parsed.productMaster;
-            if (parsed.warehouseMaster) state.warehouseMaster = parsed.warehouseMaster;
-            updateWarehouseDropdowns();
-            updateMasterCounters();
-          }
-        } catch (e) {
-          console.error('localStorage読み込みエラー:', e);
+      document.getElementById('disc-reason-select').addEventListener('change', function() {
+        const val = this.value;
+        const container = document.getElementById('disc-unregistered-container');
+        if (val === '登録なし商品') {
+          container.classList.remove('hidden');
+        } else {
+          container.classList.add('hidden');
         }
-      }
+      });
+    });
 
-      function saveStateToStorage() {
-        try {
-          localStorage.setItem(STORAGE_KEYS.ITEMS, JSON.stringify(state.items));
-          localStorage.setItem(STORAGE_KEYS.OPERATOR, state.operatorName);
-          localStorage.setItem(STORAGE_KEYS.DEPARTMENT, state.currentDepartment);
-          localStorage.setItem(STORAGE_KEYS.SOURCE_WH, state.sourceWarehouse);
-          localStorage.setItem(STORAGE_KEYS.DEST_WH, state.destWarehouse);
-        } catch (e) {
-          console.error('localStorage保存エラー:', e);
+    function switchView(viewId) {
+      ['view-pl-entry', 'view-inspecting', 'view-confirm'].forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+      });
+      document.getElementById(viewId).classList.remove('hidden');
+      state.currentView = viewId;
+    }
+
+    function openSettingsModal() { document.getElementById('modal-settings').classList.remove('hidden'); }
+    function closeSettingsModal() { document.getElementById('modal-settings').classList.add('hidden'); }
+    function saveSettings() {
+      state.gasUrl = document.getElementById('settings-gas-url').value.trim();
+      localStorage.setItem('gas_url', state.gasUrl);
+      closeSettingsModal();
+      fetchMasterFromGas(true);
+    }
+
+    function openPLListModal() {
+      document.getElementById('modal-pl-list').classList.remove('hidden');
+      renderPLModalList();
+    }
+    function closePLListModal() { document.getElementById('modal-pl-list').classList.add('hidden'); }
+
+    function setPLFilter(mode) {
+      state.plFilterMode = mode;
+      const btnAll = document.getElementById('filter-all-btn');
+      const btnUncounted = document.getElementById('filter-uncounted-btn');
+      if (mode === 'all') {
+        btnAll.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-sm transition-all';
+        btnUncounted.className = 'px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition-all';
+      } else {
+        btnUncounted.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-sm transition-all';
+        btnAll.className = 'px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition-all';
+      }
+      renderPLModalList();
+    }
+
+    async function fetchMasterFromGas(silent) {
+      if (!state.gasUrl) return;
+      try {
+        const res = await fetch(`${state.gasUrl}?action=getMaster`);
+        const json = await res.json();
+        if (json.status === 'success') {
+          state.masterList = json.data || [];
+          document.getElementById('card-master-count').innerText = `商品マスタ ${state.masterList.length}件連携中`;
+          if (!silent) alert(`商品マスタを更新しました（${state.masterList.length}件）`);
         }
+      } catch (err) {
+        if (!silent) alert('マスタ取得エラー: ' + err.message);
       }
+    }
 
-      function saveMasterCache() {
-        try {
-          localStorage.setItem(STORAGE_KEYS.MASTER_CACHE, JSON.stringify({
-            productMaster: state.productMaster,
-            warehouseMaster: state.warehouseMaster
-          }));
-        } catch (e) {}
-      }
-
-      // ----------------------------------------------------------------------
-      // GAS 通信レイヤー (JSONP / CORS対応)
-      // ----------------------------------------------------------------------
-
-      function fetchMasterData() {
-        showToast('マスタデータを最新化中...', 'info');
-        el.refreshMasterSpinner.classList.remove('hidden');
-
-        // CORSエラー回避のため、JSONP形式の動的scriptタグ生成でデータ取得
-        const scriptP = document.createElement('script');
-        const scriptW = document.createElement('script');
-
-        window.handleProductMasterJSONP = function(res) {
-          if (res && res.success && Array.isArray(res.data)) {
-            state.productMaster = res.data.map(item => ({
-              itemCode: item.code || item.itemCode || '',
-              itemName1: item.name1 || item.itemName1 || '',
-              itemName2: item.name2 || item.itemName2 || '',
-              size: item.size || '',
-              janCode: item.jan || item.janCode || ''
-            }));
-            updateMasterCounters();
-            saveMasterCache();
-            showToast('商品マスタを最新に更新しました。', 'success');
+    async function refreshPLDataFromGas(silent) {
+      if (!state.gasUrl) { alert('設定画面からGAS URLを入力してください'); openSettingsModal(); return; }
+      try {
+        const res = await fetch(`${state.gasUrl}?action=refreshPLData`);
+        const json = await res.json();
+        if (json.status === 'success') {
+          state.plList = json.plList || json.data || [];
+          renderPLDashboardScroll();
+          if (!document.getElementById('modal-pl-list').classList.contains('hidden')) {
+            renderPLModalList();
           }
-          el.refreshMasterSpinner.classList.add('hidden');
-          delete window.handleProductMasterJSONP;
-          scriptP.remove();
-        };
+          if (!silent) alert(`PLデータを反映しました（${state.plList.length}件）`);
+        } else {
+          if (!silent) alert('PLデータ取得失敗: ' + (json.message || '不明なエラー'));
+        }
+      } catch (err) {
+        if (!silent) alert('PLデータ通信エラー: ' + err.message);
+      }
+    }
 
-        window.handleWarehouseMasterJSONP = function(res) {
-          if (res && res.success && Array.isArray(res.data)) {
-            state.warehouseMaster = res.data;
-            updateWarehouseDropdowns();
-            saveMasterCache();
-          }
-          delete window.handleWarehouseMasterJSONP;
-          scriptW.remove();
-        };
+    async function purgeAllPLData() {
+      if (!confirm('本当にすべての取込済みPLデータを削除しますか？\n（次の仕入用にデータをリセットします）')) return;
+      try {
+        const res = await fetch(`${state.gasUrl}?action=purgeAllPL`);
+        const json = await res.json();
+        if (json.status === 'success') {
+          alert('すべてのPLデータを削除・リセットしました。');
+          state.plList = [];
+          renderPLDashboardScroll();
+          closePLListModal();
+        } else {
+          alert('削除エラー: ' + (json.message || '不明なエラー'));
+        }
+      } catch (err) {
+        alert('通信エラー: ' + err.message);
+      }
+    }
 
-        scriptP.src = `${GAS_WEB_APP_URL}?action=getMasterData&prefix=handleProductMasterJSONP`;
-        scriptW.src = `${GAS_WEB_APP_URL}?action=getWarehouseMaster&prefix=handleWarehouseMasterJSONP`;
+    function renderPLDashboardScroll() {
+      const container = document.getElementById('pl-dashboard-scroll');
+      if (!state.plList || state.plList.length === 0) {
+        container.innerHTML = '<div class="text-center py-3 px-6 text-xs text-slate-400 bg-white rounded-xl border border-slate-200 shrink-0">PLデータ未取込（「📥取込」を押してください）</div>';
+        return;
+      }
+      let html = '';
+      state.plList.forEach(pl => {
+        const badge = pl.isCompleted 
+          ? '<span class="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">検品済</span>'
+          : '<span class="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded">未検品</span>';
+        html += `
+          <button onclick="selectPlNo('${pl.plNo}')" class="p-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-left shadow-sm transition-all active:scale-95 flex flex-col justify-between shrink-0 w-36">
+            <div class="flex items-center justify-between w-full">
+              <span class="font-mono font-black text-slate-900 text-sm">PL:${pl.plNo}</span>
+              ${badge}
+            </div>
+            <div class="text-[11px] text-slate-500 mt-1.5">${pl.totalLines}品目 / ${pl.totalPlanQty}個</div>
+          </button>
+        `;
+      });
+      container.innerHTML = html;
+    }
 
-        scriptP.onerror = scriptW.onerror = function() {
-          el.refreshMasterSpinner.classList.add('hidden');
-          if (state.productMaster.length === 0) {
-            fallbackLocalMaster();
-          } else {
-            showToast('オフライン/通信制限のため、保存済みキャッシュマスタを使用します。', 'warning');
-          }
-        };
+    function renderPLModalList() {
+      const body = document.getElementById('pl-list-modal-body');
+      let targetList = state.plList || [];
+      
+      let sumPlan = 0;
+      let sumActual = 0;
+      targetList.forEach(pl => {
+        sumPlan += Number(pl.totalPlanQty) || 0;
+        if (pl.isCompleted && pl.actualTotalQty !== undefined) {
+          sumActual += Number(pl.actualTotalQty) || 0;
+        }
+      });
+      document.getElementById('summary-total-plan').innerText = sumPlan;
+      document.getElementById('summary-total-actual').innerText = sumActual;
 
-        document.body.appendChild(scriptP);
-        document.body.appendChild(scriptW);
+      if (state.plFilterMode === 'uncounted') {
+        targetList = targetList.filter(pl => !pl.isCompleted);
       }
 
-      function fallbackLocalMaster() {
-        state.productMaster = [
-          { itemCode: 'TS-001-WHT-M', itemName1: 'ヘビーウェイト コットンTシャツ', itemName2: 'ホワイト / レギュラーフィット', size: 'M', janCode: '4580123456789' },
-          { itemCode: 'TS-001-WHT-L', itemName1: 'ヘビーウェイト コットンTシャツ', itemName2: 'ホワイト / レギュラーフィット', size: 'L', janCode: '4580123456796' },
-          { itemCode: 'PK-022-GRY-L', itemName1: 'プレミアム裏毛 ジップパーカー', itemName2: 'ヘザーグレー / スタンダード', size: 'L', janCode: '4901234567894' }
-        ];
-
-        state.warehouseMaster = [
-          ...DEFAULT_COMMON_WAREHOUSES,
-          { department: '催事', code: '4001', name: '催事会場A' },
-          { department: 'WEB', code: '5001', name: '自社EC出荷センター' }
-        ];
-
-        updateWarehouseDropdowns();
-        updateMasterCounters();
-        renderTable();
+      if (targetList.length === 0) {
+        body.innerHTML = '<div class="text-center py-8 text-xs text-slate-400">該当するPLデータがありません</div>';
+        return;
       }
+      let html = '';
+      targetList.forEach(pl => {
+        const badge = pl.isCompleted ? '<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold text-xs">検品済</span>' : '<span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold text-xs">未検品</span>';
+        let detailText = `品目数: ${pl.totalLines}行 / 予定総数: ${pl.totalPlanQty}個`;
+        if (pl.isCompleted && pl.actualTotalQty !== undefined) {
+          detailText += ` <span class="text-emerald-700 font-bold">(実カウント: ${pl.actualTotalQty}個)</span>`;
+        }
+        html += `
+          <div class="p-3.5 bg-white border border-slate-200 rounded-2xl flex items-center justify-between shadow-sm">
+            <div>
+              <div class="font-black text-base text-slate-900">PL番号: ${pl.plNo}</div>
+              <div class="text-xs text-slate-500 mt-0.5">${detailText}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              ${badge}
+              <button onclick="closePLListModal(); selectPlNo('${pl.plNo}');" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl active:scale-95">検品する</button>
+            </div>
+          </div>
+        `;
+      });
+      body.innerHTML = html;
+    }
 
-      function updateMasterCounters() {
-        el.productMasterCount.textContent = state.productMaster.length;
+    // テンキー
+    function pressPlKeypad(n) {
+      if (state.plKeypadVal.length >= 5) return;
+      state.plKeypadVal += n;
+      updateKeypadDisplay();
+    }
+    function clearPlKeypad() { state.plKeypadVal = ''; updateKeypadDisplay(); }
+    function backspacePlKeypad() { state.plKeypadVal = state.plKeypadVal.slice(0, -1); updateKeypadDisplay(); }
+    function updateKeypadDisplay() {
+      const el = document.getElementById('pl-keypad-display');
+      if (state.plKeypadVal === '') {
+        el.innerText = 'PL番号を入力';
+        el.className = 'text-3xl font-black font-mono tracking-widest text-slate-400';
+      } else {
+        el.innerText = state.plKeypadVal;
+        el.className = 'text-3xl font-black font-mono tracking-widest text-emerald-700';
       }
+    }
+    function confirmPlKeypad() {
+      if (!state.plKeypadVal) { alert('PL番号を入力してください'); return; }
+      selectPlNo(state.plKeypadVal);
+    }
 
-      // ----------------------------------------------------------------------
-      // 倉庫ドロップダウン連動 & 重複排除
-      // ----------------------------------------------------------------------
-
-      function updateWarehouseDropdowns() {
-        const dept = state.currentDepartment;
-        const warehouseMap = new Map();
-
-        DEFAULT_COMMON_WAREHOUSES.forEach(function(wh) {
-          warehouseMap.set(String(wh.code).trim(), {
-            code: String(wh.code).trim(),
-            name: wh.name,
-            department: '共通'
+    async function selectPlNo(plNo) {
+      state.activePlNo = plNo;
+      try {
+        const res = await fetch(`${state.gasUrl}?action=getPLDetails&plNo=${plNo}`);
+        const json = await res.json();
+        if (json.status === 'success' && json.data.length > 0) {
+          state.currentPlItems = json.data;
+          state.inspectionResults = {};
+          state.currentPlItems.forEach((item, idx) => {
+            state.inspectionResults[idx] = { 
+              actualQty: item.planQty,
+              hasException: false, 
+              discrepancies: [],
+              tappedName: false,
+              tappedColor: false,
+              tappedSize: false,
+              tappedPlan: false
+            };
           });
-        });
-
-        state.warehouseMaster.forEach(function(wh) {
-          const whDept = String(wh.department || '').trim();
-          const whCode = String(wh.code || '').trim();
-          const whName = String(wh.name || '').trim();
-          if (!whCode) return;
-          if (whDept === '共通' || whDept === dept) {
-            warehouseMap.set(whCode, {
-              code: whCode,
-              name: whName || whCode,
-              department: whDept
-            });
-          }
-        });
-
-        const availableWarehouses = Array.from(warehouseMap.values()).sort(function(a, b) {
-          if (a.department === b.department) return a.code.localeCompare(b.code);
-          return a.department === '共通' ? -1 : 1;
-        });
-
-        populateSelectOptions(el.sourceWarehouseSelect, availableWarehouses, state.sourceWarehouse, '1000:物流倉庫');
-        populateSelectOptions(el.destWarehouseSelect, availableWarehouses, state.destWarehouse, getDefaultDestForDept(dept));
-
-        state.sourceWarehouse = el.sourceWarehouseSelect.value;
-        state.destWarehouse = el.destWarehouseSelect.value;
-        saveStateToStorage();
-      }
-
-      function getDefaultDestForDept(dept) {
-        if (dept === '催事') return '4000:催事倉庫';
-        if (dept === 'WEB') return '500008:WEB倉庫';
-        if (dept === '卸委託') return '1002:卸委託';
-        if (dept === '卸受注') return '1003:卸受注';
-        return '1000:物流倉庫';
-      }
-
-      function populateSelectOptions(selectEl, warehouses, currentValue, fallbackValue) {
-        selectEl.innerHTML = '';
-        warehouses.forEach(function(wh) {
-          const optVal = wh.code + ':' + wh.name;
-          const opt = document.createElement('option');
-          opt.value = optVal;
-          opt.textContent = '[' + wh.code + '] ' + wh.name + ' (' + wh.department + ')';
-          selectEl.appendChild(opt);
-        });
-
-        const hasCurrent = Array.from(selectEl.options).some(o => o.value === currentValue);
-        if (hasCurrent) {
-          selectEl.value = currentValue;
+          document.getElementById('inspect-pl-label').innerText = `PL - ${plNo}`;
+          renderInspectionCards();
+          switchView('view-inspecting');
         } else {
-          const hasFallback = Array.from(selectEl.options).some(o => o.value === fallbackValue);
-          if (hasFallback) selectEl.value = fallbackValue;
-          else if (selectEl.options.length > 0) selectEl.selectedIndex = 0;
+          alert(`PL番号「${plNo}」のデータが見つかりません。`);
         }
+      } catch (err) {
+        alert('通信エラー: ' + err.message);
       }
+    }
 
-      function swapWarehouses() {
-        const temp = el.sourceWarehouseSelect.value;
-        el.sourceWarehouseSelect.value = el.destWarehouseSelect.value;
-        el.destWarehouseSelect.value = temp;
-        state.sourceWarehouse = el.sourceWarehouseSelect.value;
-        state.destWarehouse = el.destWarehouseSelect.value;
-        saveStateToStorage();
-        showToast('移動元と移動先を入れ替えました。', 'info');
-      }
+    function backToPlEntry() { switchView('view-pl-entry'); }
 
-      // ----------------------------------------------------------------------
-      // バーコードスキャン処理
-      // ----------------------------------------------------------------------
+    // 検品カード描画（カラー＆サイズ超大型化 ＆ ＋/－クイック増減搭載 ＆ 商品検索ボタン）
+    function renderInspectionCards() {
+      const container = document.getElementById('inspection-cards-container');
+      let html = `
+        <div class="bg-sky-50 border border-sky-200 p-3 rounded-2xl flex items-center justify-between shadow-sm">
+          <div class="text-xs text-sky-900 font-bold">バーコードが読み込めない場合は？</div>
+          <button onclick="openItemSearchModal()" class="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-xl shadow active:scale-95 flex items-center gap-1">
+            <span>🔍 商品検索で探す</span>
+          </button>
+        </div>
+      `;
 
-      async function toggleCamera() {
-        if (state.isScanning) await stopCamera();
-        else await startCamera();
-      }
+      state.currentPlItems.forEach((item, idx) => {
+        const res = state.inspectionResults[idx];
+        const isEx = res.hasException;
+        const allTapped = res.tappedName && res.tappedColor && res.tappedSize && res.tappedPlan;
 
-      async function startCamera() {
-        try {
-          if (!state.scanner) state.scanner = new Html5Qrcode("reader");
-          el.readerPlaceholder.classList.add('hidden');
-          el.scanOverlay.classList.remove('hidden');
+        let discSummary = (res.discrepancies || []).map(d => {
+          let txt = `${d.reason}: ${d.qty}点`;
+          if (d.targetItemCode) txt += ` [別商品: ${d.targetItemCode} ${d.targetItemName || ''}]`;
+          if (d.unregName) txt += ` [登録なし: ${d.unregName}]`;
+          return txt;
+        }).join(' ／ ');
 
-          await state.scanner.start(
-            { facingMode: "environment" },
-            { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: 1.777778 },
-            onBarcodeScannedSuccess,
-            onBarcodeScanFailure
-          );
-
-          state.isScanning = true;
-          el.cameraBtnText.textContent = 'カメラ停止';
-          el.cameraBtnIcon.textContent = '⏹';
-          el.toggleCameraBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
-          el.toggleCameraBtn.classList.add('bg-rose-600', 'hover:bg-rose-700');
-          showToast('カメラを起動しました。', 'info');
-        } catch (err) {
-          showToast('カメラ起動失敗: ' + err.message, 'error');
-          el.readerPlaceholder.classList.remove('hidden');
-          el.scanOverlay.classList.add('hidden');
-        }
-      }
-
-      async function stopCamera() {
-        if (state.scanner && state.isScanning) {
-          try { await state.scanner.stop(); } catch (e) {}
-        }
-        state.isScanning = false;
-        el.cameraBtnText.textContent = 'カメラ起動';
-        el.cameraBtnIcon.textContent = '▶';
-        el.toggleCameraBtn.classList.remove('bg-rose-600', 'hover:bg-rose-700');
-        el.toggleCameraBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
-        el.readerPlaceholder.classList.remove('hidden');
-        el.scanOverlay.classList.add('hidden');
-      }
-
-      function onBarcodeScannedSuccess(decodedText) {
-        const cleanCode = String(decodedText || '').trim();
-        if (!cleanCode) return;
-        playScanBeep();
-        el.lastScannedInfo.innerHTML = '直近検出: <strong class="text-indigo-600 font-mono">' + cleanCode + '</strong> (' + new Date().toLocaleTimeString() + ')';
-        openQuantityModalByCode(cleanCode);
-      }
-
-      function onBarcodeScanFailure(error) {}
-
-      function playScanBeep() {
-        if (!el.soundToggle.checked) return;
-        try {
-          const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(1760, audioCtx.currentTime);
-          gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-          osc.connect(gain);
-          gain.connect(audioCtx.destination);
-          osc.start();
-          osc.stop(audioCtx.currentTime + 0.1);
-        } catch (e) {}
-      }
-
-      // ----------------------------------------------------------------------
-      // 数量入力モーダル UX
-      // ----------------------------------------------------------------------
-
-      function openQuantityModalByCode(code) {
-        const product = findProduct(code);
-        state.pendingScannedProduct = product || {
-          itemCode: code,
-          itemName1: 'マスタ未登録商品 (' + code + ')',
-          itemName2: '品番直接指定',
-          size: '-',
-          janCode: code
-        };
-        state.editItemIndex = null;
-        el.modalItemName1.textContent = state.pendingScannedProduct.itemName1 || state.pendingScannedProduct.name1 || '-';
-        el.modalItemName2.textContent = state.pendingScannedProduct.itemName2 || state.pendingScannedProduct.name2 || '-';
-        el.modalSize.textContent = state.pendingScannedProduct.size || '-';
-        el.modalItemCode.textContent = state.pendingScannedProduct.itemCode || state.pendingScannedProduct.code || '-';
-        el.modalJanCode.textContent = state.pendingScannedProduct.janCode || state.pendingScannedProduct.jan || '-';
-        el.modalQtyInput.value = '1';
-        el.modalNoteInput.value = '';
-        el.quantityModal.classList.remove('hidden');
-        setTimeout(() => {
-          el.modalQtyInput.focus();
-          el.modalQtyInput.select();
-        }, 100);
-      }
-
-      function findProduct(code) {
-        const query = String(code).trim().toUpperCase();
-        if (!query) return null;
-        return state.productMaster.find(function(p) {
-          const jan = String(p.janCode || p.jan || '').trim().toUpperCase();
-          const itemCode = String(p.itemCode || p.code || '').trim().toUpperCase();
-          return jan === query || itemCode === query;
-        });
-      }
-
-      function confirmQuantityModal() {
-        const qty = parseInt(el.modalQtyInput.value, 10);
-        if (isNaN(qty) || qty <= 0) {
-          showToast('数量には1以上の数値を入力してください。', 'warning');
-          el.modalQtyInput.focus();
-          return;
+        let totalCount = res.actualQty;
+        if (res.discrepancies.length > 0) {
+          let extraSum = 0;
+          res.discrepancies.forEach(d => { extraSum += Number(d.qty) || 0; });
+          totalCount = Number(res.actualQty) + extraSum;
         }
 
-        const note = el.modalNoteInput.value.trim();
-        const p = state.pendingScannedProduct;
+        html += `
+          <div class="bg-white border-2 ${isEx ? 'border-amber-400 bg-amber-50/20' : 'border-slate-200'} rounded-2xl p-4 shadow-sm space-y-3">
+            <div class="text-xs font-bold text-slate-500 flex justify-between items-center">
+              <span>品目 #${idx + 1} ｜ パレット:${item.palletNo || '-'} / カートン:${item.cartonNo || '-'}</span>
+              <span class="font-mono text-slate-400 font-bold">${item.itemCode}</span>
+            </div>
+            
+            <!-- 【視認性最重視】商品名・カラー・サイズを大きく強調表示 -->
+            <div class="space-y-2">
+              <div onclick="tapField(${idx}, 'Name')" class="p-2.5 rounded-xl cursor-pointer transition-all border ${res.tappedName ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-bold' : 'bg-white border-slate-300 text-slate-800'}">
+                <span class="block text-[10px] text-slate-400">商品名 (タップ確認)</span>
+                <span class="text-sm font-black">${item.jpDesign || item.mexDesign}</span> ${res.tappedName ? '✓' : ''}
+              </div>
 
-        if (state.editItemIndex !== null && state.editItemIndex >= 0) {
-          state.items[state.editItemIndex].quantity = qty;
-          state.items[state.editItemIndex].note = note;
-          showToast('アイテムを更新しました。', 'success');
-        } else {
-          const newItem = {
-            sourceWarehouse: el.sourceWarehouseSelect.value,
-            destWarehouse: el.destWarehouseSelect.value,
-            itemCode: p.itemCode || p.code || '',
-            itemName1: p.itemName1 || p.name1 || '',
-            itemName2: p.itemName2 || p.name2 || '',
-            size: p.size || '',
-            janCode: p.janCode || p.jan || '',
-            quantity: qty,
-            note: note,
-            addedAt: new Date().toISOString()
+              <div class="grid grid-cols-2 gap-2">
+                <!-- カラー表記を大きく強調 -->
+                <div onclick="tapField(${idx}, 'Color')" class="p-2.5 rounded-xl cursor-pointer transition-all border ${res.tappedColor ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-bold' : 'bg-amber-50/60 border-amber-300 text-slate-900'}">
+                  <span class="block text-[10px] text-amber-800 font-bold">🎨 カラー (タップ確認)</span>
+                  <span class="text-base font-black tracking-wide">${item.jpColor || item.mexColor}</span> ${res.tappedColor ? '✓' : ''}
+                </div>
+                <!-- サイズ表記を圧倒的に大きく強調（見間違い防止） -->
+                <div onclick="tapField(${idx}, 'Size')" class="p-2.5 rounded-xl cursor-pointer transition-all border ${res.tappedSize ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-bold' : 'bg-rose-50/80 border-rose-300 text-slate-900'}">
+                  <span class="block text-[10px] text-rose-800 font-bold">📏 サイズ (タップ確認)</span>
+                  <span class="text-xl font-black tracking-wider text-rose-700">${item.jpSize || item.mexSize}</span> ${res.tappedSize ? '✓' : ''}
+                </div>
+              </div>
+
+              <div onclick="tapField(${idx}, 'Plan')" class="p-2.5 rounded-xl cursor-pointer transition-all border ${res.tappedPlan ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-bold' : 'bg-white border-slate-300 text-slate-700'}">
+                <span class="block text-[10px] text-slate-400">PL予定数 (タップ確認)</span>
+                <span class="font-mono text-sm font-black">${item.planQty}個</span> ${res.tappedPlan ? '✓' : ''}
+              </div>
+            </div>
+
+            <!-- カウント実数入力 ＋ クイック増減ボタン（＋/－） -->
+            <div class="bg-emerald-50/60 p-3 rounded-2xl border border-emerald-200 space-y-2">
+              <div class="flex items-center justify-between">
+                <div>
+                  <span class="text-xs font-black text-slate-900 block">本来の商品のカウント実数:</span>
+                  <span class="text-[10px] text-slate-500">予定(${item.planQty}個)に対する実際の数</span>
+                </div>
+                <!-- クイック増減ボタン（＋/－） -->
+                <div class="flex items-center gap-1">
+                  <button ${!allTapped ? 'disabled' : ''} onclick="adjustQty(${idx}, -1)" class="w-10 h-10 bg-white border border-emerald-400 rounded-xl font-black text-lg text-emerald-800 active:scale-95 shadow-sm flex items-center justify-center">-</button>
+                  <button ${!allTapped ? 'disabled' : ''} onclick="adjustQty(${idx}, 1)" class="w-10 h-10 bg-emerald-600 rounded-xl font-black text-lg text-white active:scale-95 shadow-sm flex items-center justify-center">+</button>
+                </div>
+              </div>
+              <input type="number" ${!allTapped ? 'disabled' : ''} id="actual-input-${idx}" value="${res.actualQty}" onchange="updateActualQty(${idx}, this.value)" class="w-full px-3 py-2.5 border-2 border-emerald-500 rounded-xl font-mono text-xl font-black bg-white text-emerald-950 text-center shadow-sm">
+            </div>
+
+            <div class="flex items-center gap-2 pt-1">
+              <button ${!allTapped ? 'disabled' : ''} onclick="setInspectionMatch(${idx})" class="flex-1 py-3 rounded-xl text-xs font-bold transition-all ${!allTapped ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : (!isEx ? 'bg-emerald-600 text-white shadow' : 'bg-slate-100 text-slate-700')}">
+                ✓ 予定通り一致 (${item.planQty})
+              </button>
+              <button ${!allTapped ? 'disabled' : ''} onclick="openDiscrepancyModal(${idx})" class="px-4 py-3 rounded-xl text-xs font-bold transition-all ${!allTapped ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : (isEx ? 'bg-amber-600 text-white shadow' : 'bg-amber-50 text-amber-800 border border-amber-300')}">
+                ⚠️ 差異あり ${res.discrepancies.length > 0 ? '('+res.discrepancies.length+')' : ''}
+              </button>
+            </div>
+            ${!allTapped ? '<div class="text-[10px] text-rose-600 font-bold text-center">↑ 上記の4項目すべてをタップして確認してください</div>' : ''}
+
+            ${isEx ? `
+              <div class="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs space-y-1.5">
+                <div class="font-bold text-amber-900">📊 カウント計算結果・内訳:</div>
+                <div class="text-amber-800 font-mono">${discSummary || '詳細未登録'}</div>
+                <div class="pt-1.5 border-t border-amber-200 font-black text-amber-950 flex justify-between items-center">
+                  <span>本来の商品実数(${res.actualQty}個) ＋ 追加・別商品カウント ＝</span>
+                  <span class="text-sm font-mono text-emerald-700 font-black">合計 ${totalCount}点</span>
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+      checkInspectionCompletion();
+    }
+
+    function tapField(idx, field) {
+      if (field === 'Name') state.inspectionResults[idx].tappedName = true;
+      if (field === 'Color') state.inspectionResults[idx].tappedColor = true;
+      if (field === 'Size') state.inspectionResults[idx].tappedSize = true;
+      if (field === 'Plan') state.inspectionResults[idx].tappedPlan = true;
+      renderInspectionCards();
+    }
+
+    function updateActualQty(idx, val) {
+      state.inspectionResults[idx].actualQty = Number(val) || 0;
+      renderInspectionCards();
+    }
+
+    // クイック増減ボタン（＋/－）の処理
+    function adjustQty(idx, delta) {
+      let current = Number(state.inspectionResults[idx].actualQty) || 0;
+      current += delta;
+      if (current < 0) current = 0;
+      state.inspectionResults[idx].actualQty = current;
+      renderInspectionCards();
+    }
+
+    function setInspectionMatch(idx) {
+      state.inspectionResults[idx].actualQty = state.currentPlItems[idx].planQty;
+      state.inspectionResults[idx].hasException = false;
+      state.inspectionResults[idx].discrepancies = [];
+      renderInspectionCards();
+    }
+
+    function openDiscrepancyModal(idx) {
+      state.activeDiscIndex = idx;
+      document.getElementById('disc-qty-input').value = '1';
+      document.getElementById('disc-note-input').value = '';
+      document.getElementById('disc-unregistered-input').value = '';
+      document.getElementById('disc-reason-select').value = '過不足';
+      document.getElementById('disc-unregistered-container').classList.add('hidden');
+      document.getElementById('modal-discrepancy').classList.remove('hidden');
+    }
+
+    function closeDiscrepancyModal() {
+      document.getElementById('modal-discrepancy').classList.add('hidden');
+    }
+
+    function proceedFromDiscrepancy() {
+      const reason = document.getElementById('disc-reason-select').value;
+      const qty = Number(document.getElementById('disc-qty-input').value) || 0;
+      const note = document.getElementById('disc-note-input').value.trim();
+      const unregName = document.getElementById('disc-unregistered-input').value.trim();
+
+      state.tempDiscData = {
+        reason: reason,
+        qty: qty,
+        note: note,
+        targetItemCode: '',
+        targetItemName: '',
+        targetSize: '',
+        unregName: unregName
+      };
+
+      closeDiscrepancyModal();
+
+      if (reason === '商品違い') {
+        openItemSearchModal();
+      } else {
+        saveCurrentDiscrepancy();
+      }
+    }
+
+    function openItemSearchModal() {
+      document.getElementById('search-keyword-input').value = '';
+      renderMasterSearchResults(state.masterList.slice(0, 15));
+      document.getElementById('modal-item-search').classList.remove('hidden');
+    }
+
+    function closeItemSearchModal() {
+      document.getElementById('modal-item-search').classList.add('hidden');
+    }
+
+    // ★スペース区切りAND検索 ＆ 最大15件表示のロジック
+    function filterMasterList(keyword) {
+      const tokens = keyword.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      if (tokens.length === 0) {
+        renderMasterSearchResults(state.masterList.slice(0, 15));
+        return;
+      }
+      const filtered = state.masterList.filter(m => {
+        const textTarget = `${m.itemCode} ${m.jpDesign} ${m.mexDesign} ${m.jpColor} ${m.mexColor} ${m.jpSize} ${m.mexSize}`.toLowerCase();
+        // すべての単語（トークン）が含まれているか（AND検索）
+        return tokens.every(token => textTarget.includes(token));
+      });
+      // 最大15件まで絞り込んで表示
+      renderMasterSearchResults(filtered.slice(0, 15));
+    }
+
+    function renderMasterSearchResults(list) {
+      const container = document.getElementById('item-search-results');
+      if (list.length === 0) {
+        container.innerHTML = '<div class="text-center py-6 text-xs text-slate-400">該当する商品が見つかりません（キーワードを変えてお試しください）</div>';
+        return;
+      }
+      let html = `<div class="text-[11px] text-slate-500 font-bold mb-1">候補（最大15件表示・タップして選択）:</div>`;
+      list.forEach(m => {
+        html += `
+          <div onclick="selectMixedItemFromSearch('${m.itemCode}', '${m.jpDesign || m.mexDesign}', '${m.jpColor || m.mexColor}', '${m.jpSize || m.mexSize}')" class="p-3 bg-white border border-slate-200 hover:border-emerald-500 rounded-2xl shadow-sm cursor-pointer transition-all active:scale-[0.99] flex items-center justify-between">
+            <div>
+              <span class="font-mono text-xs font-bold text-slate-500">コード: ${m.itemCode}</span>
+              <div class="font-black text-sm text-slate-900">${m.jpDesign || m.mexDesign}</div>
+              <div class="text-xs text-slate-600 mt-0.5">カラー: <strong class="text-amber-800">${m.jpColor || m.mexColor}</strong> ｜ サイズ: <strong class="text-rose-700">${m.jpSize || m.mexSize}</strong></div>
+            </div>
+            <button class="px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-xl shadow">選択する ➔</button>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+    }
+
+    // 商品検索モーダルから「商品違い」の混入商品として選択した場合
+    function selectMixedItemFromSearch(code, name, color, size) {
+      if (!state.tempDiscData) state.tempDiscData = {};
+      state.tempDiscData.targetItemCode = code;
+      state.tempDiscData.targetItemName = `${name} (${color} / ${size})`;
+      state.tempDiscData.targetSize = size;
+
+      closeItemSearchModal();
+      saveCurrentDiscrepancy();
+    }
+
+    function saveCurrentDiscrepancy() {
+      const idx = state.activeDiscIndex;
+      if (idx === null || !state.tempDiscData) return;
+
+      state.inspectionResults[idx].hasException = true;
+      state.inspectionResults[idx].discrepancies.push(state.tempDiscData);
+
+      state.activeDiscIndex = null;
+      state.tempDiscData = null;
+      renderInspectionCards();
+    }
+
+    function checkInspectionCompletion() {
+      const btn = document.getElementById('btn-goto-confirm');
+      btn.disabled = false;
+      btn.className = 'w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 transition-all shadow-md bg-emerald-600 hover:bg-emerald-500 text-white active:scale-[0.98]';
+    }
+
+    function goToConfirmScreen() {
+      document.getElementById('confirm-pl-sub').innerText = `PL - ${state.activePlNo} の検品結果`;
+      const container = document.getElementById('confirm-items-container');
+      let html = '';
+      state.currentPlItems.forEach((item, idx) => {
+        const res = state.inspectionResults[idx];
+        let discHtml = '';
+        let extraSum = 0;
+        if (res.hasException && res.discrepancies.length > 0) {
+          res.discrepancies.forEach(d => {
+            extraSum += Number(d.qty) || 0;
+            discHtml += `<div class="text-amber-700 font-bold mt-1">⚠️ ${d.reason}: ${d.qty}点 ${d.targetItemCode ? `(別商品: ${d.targetItemCode} ${d.targetItemName})` : ''} ${d.unregName ? `(登録なし: ${d.unregName})` : ''}</div>`;
+          });
+        }
+        const totalFinal = Number(res.actualQty) + extraSum;
+
+        html += `
+          <div class="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm space-y-1 text-xs">
+            <div class="flex items-center justify-between">
+              <span class="font-mono text-slate-500">${item.itemCode || 'コードなし'}</span>
+              <span class="font-bold ${res.hasException ? 'text-amber-600' : 'text-emerald-600'}">${res.hasException ? '⚠️ 差異あり' : '✓ 一致'}</span>
+            </div>
+            <div class="font-black text-slate-900 text-sm">${item.jpDesign || item.mexDesign}</div>
+            <div class="text-slate-600">カラー: <strong class="text-amber-800">${item.jpColor || item.mexColor}</strong> ｜ サイズ: <strong class="text-rose-700">${item.jpSize || item.mexSize}</strong></div>
+            ${discHtml}
+            <div class="flex justify-between font-mono pt-1 border-t border-slate-100 mt-1">
+              <span>PL予定: ${item.planQty} / 実数入力: ${res.actualQty}</span>
+              <span class="font-bold text-emerald-700">合計点数: ${totalFinal}点</span>
+            </div>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+      switchView('view-confirm');
+    }
+
+    function backToInspectionScreen() { switchView('view-inspecting'); }
+
+    async function submitInspectionData() {
+      const targetPl = state.plList.find(p => String(p.plNo) === String(state.activePlNo));
+      const isAlreadyCompleted = targetPl && targetPl.isCompleted;
+
+      if (isAlreadyCompleted) {
+        const firstWarn = confirm(`⚠️ 【警告 1/2】\nPL番号「${state.activePlNo}」は本日はすでにカウント入力済み（検品済）です。\n\n再度上書き送信しますが、本当に間違いありませんか？`);
+        if (!firstWarn) return;
+
+        const secondWarn = confirm(`🚨 【警告 2/2・最終確認】\n本当に上書きしてよろしいですか？\nこの操作により既存のカウントデータが更新されます。`);
+        if (!secondWarn) return;
+      }
+
+      const inspectorName = document.getElementById('inspector-name-input'].value.trim() || '未記入';
+      const payload = {
+        action: 'submitInspection',
+        plNo: state.activePlNo,
+        inspectorName: inspectorName,
+        items: state.currentPlItems.map((item, idx) => {
+          const res = state.inspectionResults[idx];
+          return {
+            itemCode: item.itemCode,
+            mexDesign: item.mexDesign,
+            mexColor: item.mexColor,
+            mexSize: item.mexSize,
+            jpDesign: item.jpDesign,
+            jpColor: item.jpColor,
+            jpSize: item.jpSize,
+            planQty: item.planQty,
+            actualQty: Number(res.actualQty),
+            hasException: res.hasException,
+            discrepancies: res.discrepancies
           };
-          state.items.unshift(newItem);
-          showToast((newItem.itemName1 || 'アイテム') + ' (' + qty + '点) を追加しました。', 'success');
-        }
+        })
+      };
 
-        saveStateToStorage();
-        renderTable();
-
-        if (document.activeElement) document.activeElement.blur();
-        closeQuantityModal();
-      }
-
-      function closeQuantityModal() {
-        el.quantityModal.classList.add('hidden');
-        state.pendingScannedProduct = null;
-        state.editItemIndex = null;
-      }
-
-      // ----------------------------------------------------------------------
-      // リスト描画 & 操作
-      // ----------------------------------------------------------------------
-
-      function renderTable() {
-        const filterText = el.listSearchInput.value.trim().toLowerCase();
-        let displayItems = state.items;
-
-        if (filterText) {
-          displayItems = displayItems.filter(function(item) {
-            return (
-              (item.itemCode && item.itemCode.toLowerCase().includes(filterText)) ||
-              (item.itemName1 && item.itemName1.toLowerCase().includes(filterText)) ||
-              (item.itemName2 && item.itemName2.toLowerCase().includes(filterText)) ||
-              (item.janCode && item.janCode.includes(filterText)) ||
-              (item.note && item.note.toLowerCase().includes(filterText))
-            );
-          });
-        }
-
-        el.transferTableBody.innerHTML = '';
-        if (state.items.length === 0) el.emptyListNotice.classList.remove('hidden');
-        else el.emptyListNotice.classList.add('hidden');
-
-        let totalQty = 0;
-        state.items.forEach(function(i) {
-          totalQty += (parseInt(i.quantity, 10) || 0);
+      try {
+        const res = await fetch(state.gasUrl, {
+          method: 'POST',
+          body: JSON.stringify(payload)
         });
-
-        el.badgeItemCount.textContent = state.items.length + ' 件';
-        el.badgeTotalQty.textContent = '合計 ' + totalQty + ' 点';
-        el.summaryRowCount.textContent = state.items.length;
-        el.summaryTotalQty.textContent = totalQty;
-
-        el.printDate.textContent = new Date().toLocaleDateString('ja-JP');
-        el.printDept.textContent = state.currentDepartment;
-        el.printOperator.textContent = state.operatorName || '未記入';
-        el.printTotalQty.textContent = totalQty;
-
-        displayItems.forEach(function(item, idx) {
-          const originalIndex = state.items.indexOf(item);
-          const tr = document.createElement('tr');
-          tr.className = 'hover:bg-slate-50 transition border-b border-slate-100';
-
-          tr.innerHTML = `
-            <td class="py-2.5 px-3 text-center text-slate-400 font-mono">${idx + 1}</td>
-            <td class="py-2.5 px-3 font-medium text-slate-800">${escapeHtml(item.sourceWarehouse)}</td>
-            <td class="py-2.5 px-3 font-medium text-indigo-700">${escapeHtml(item.destWarehouse)}</td>
-            <td class="py-2.5 px-3 font-mono font-bold text-slate-900">${escapeHtml(item.itemCode)}</td>
-            <td class="py-2.5 px-3 font-medium text-slate-800">${escapeHtml(item.itemName1)}</td>
-            <td class="py-2.5 px-3 text-slate-600">${escapeHtml(item.itemName2)}</td>
-            <td class="py-2.5 px-3 text-center"><span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[11px]">${escapeHtml(item.size)}</span></td>
-            <td class="py-2.5 px-3 text-right font-bold text-slate-900 text-sm">${item.quantity}</td>
-            <td class="py-2.5 px-3 text-slate-500">${escapeHtml(item.note || '-')}</td>
-            <td class="py-2.5 px-3 text-center no-print whitespace-nowrap">
-              <button type="button" class="edit-item-btn text-indigo-600 hover:text-indigo-800 font-medium mr-2" data-idx="${originalIndex}">編集</button>
-              <button type="button" class="delete-item-btn text-rose-600 hover:text-rose-800 font-medium" data-idx="${originalIndex}">削除</button>
-            </td>
-          `;
-
-          el.transferTableBody.appendChild(tr);
-        });
-
-        el.transferTableBody.querySelectorAll('.delete-item-btn').forEach(function(btn) {
-          btn.addEventListener('click', function() {
-            const index = parseInt(btn.getAttribute('data-idx'), 10);
-            deleteItem(index);
-          });
-        });
-
-        el.transferTableBody.querySelectorAll('.edit-item-btn').forEach(function(btn) {
-          btn.addEventListener('click', function() {
-            const index = parseInt(btn.getAttribute('data-idx'), 10);
-            openEditItemModal(index);
-          });
-        });
-
-        el.submitToSheetBtn.disabled = state.items.length === 0;
-      }
-
-      function deleteItem(index) {
-        if (index >= 0 && index < state.items.length) {
-          state.items.splice(index, 1);
-          saveStateToStorage();
-          renderTable();
-          showToast('アイテムを削除しました。', 'info');
-        }
-      }
-
-      function openEditItemModal(index) {
-        const item = state.items[index];
-        if (!item) return;
-        state.pendingScannedProduct = {
-          itemCode: item.itemCode,
-          itemName1: item.itemName1,
-          itemName2: item.itemName2,
-          size: item.size,
-          janCode: item.janCode
-        };
-        state.editItemIndex = index;
-        el.modalItemName1.textContent = item.itemName1;
-        el.modalItemName2.textContent = item.itemName2 || '-';
-        el.modalSize.textContent = item.size || '-';
-        el.modalItemCode.textContent = item.itemCode;
-        el.modalJanCode.textContent = item.janCode || '-';
-        el.modalQtyInput.value = item.quantity;
-        el.modalNoteInput.value = item.note || '';
-        el.quantityModal.classList.remove('hidden');
-        setTimeout(() => {
-          el.modalQtyInput.focus();
-          el.modalQtyInput.select();
-        }, 100);
-      }
-
-      // ----------------------------------------------------------------------
-      // スプレッドシート送信 (fetch API 経由)
-      // ----------------------------------------------------------------------
-
-      async function submitToSpreadsheet() {
-        if (state.items.length === 0) {
-          showToast('送信するアイテムがありません。', 'warning');
-          return;
-        }
-
-        const operator = (state.operatorName || el.operatorNameInput.value).trim();
-        if (!operator) {
-          showToast('作業者名を入力してください。', 'warning');
-          el.operatorNameInput.focus();
-          return;
-        }
-
-        state.operatorName = operator;
-        saveStateToStorage();
-
-        const formattedItems = state.items.map(i => ({
-          fromWarehouse: i.sourceWarehouse,
-          toWarehouse: i.destWarehouse,
-          productCode: i.itemCode,
-          productName1: i.itemName1,
-          productName2: i.itemName2,
-          size: i.size,
-          quantity: i.quantity,
-          notes: i.note,
-          operatorName: operator
-        }));
-
-        const payload = {
-          action: 'saveTransferData',
-          department: state.currentDepartment,
-          operatorName: operator,
-          items: formattedItems
-        };
-
-        el.loadingText.textContent = '【' + state.currentDepartment + '】シートへ送信中...';
-        el.loadingOverlay.classList.remove('hidden');
-
-        try {
-          const res = await fetch(GAS_WEB_APP_URL, {
-            method: 'POST',
-            body: JSON.stringify(payload)
-          });
-          const json = await res.json();
-          handleSendSuccess(json);
-        } catch (err) {
-          handleSendError(err);
-        }
-      }
-
-      function handleSendSuccess(response) {
-        el.loadingOverlay.classList.add('hidden');
-        if (response && (response.success || response.count >= 0)) {
-          showToast(response.message || 'スプレッドシートへ正常に保存されました。', 'success');
-          setTimeout(function() {
-            const shouldClear = confirm('送信が成功しました。リストをクリアしますか？');
-            if (shouldClear) clearAllItems();
-          }, 300);
+        const json = await res.json();
+        if (json.status === 'success') {
+          alert('検品データを保存し、差異確認シートを更新しました！');
+          switchView('view-pl-entry');
+          refreshPLDataFromGas(true);
         } else {
-          showToast('保存エラー: ' + (response.message || '不明なエラー'), 'error');
+          alert('保存エラー: ' + json.message);
         }
+      } catch (err) {
+        alert('送信エラー: ' + err.message);
       }
-
-      function handleSendError(error) {
-        el.loadingOverlay.classList.add('hidden');
-        showToast('GAS書き込みエラー: ' + (error.message || error.toString()), 'error');
-      }
-
-      function clearAllItems() {
-        state.items = [];
-        saveStateToStorage();
-        renderTable();
-        showToast('リストをクリアしました。', 'info');
-      }
-
-      // ----------------------------------------------------------------------
-      // CSV出力 & A4印刷機能
-      // ----------------------------------------------------------------------
-
-      function exportCsv() {
-        if (state.items.length === 0) {
-          showToast('出力するデータがありません。', 'warning');
-          return;
-        }
-        const headers = ['移動元倉庫', '移動先倉庫', '商品コード', '商品名1', '商品名2', 'サイズ', '数量', '備考', 'JANコード'];
-        const csvRows = [headers.join(',')];
-
-        state.items.forEach(function(item) {
-          const row = [
-            `"${(item.sourceWarehouse || '').replace(/"/g, '""')}"`,
-            `"${(item.destWarehouse || '').replace(/"/g, '""')}"`,
-            `"${(item.itemCode || '').replace(/"/g, '""')}"`,
-            `"${(item.itemName1 || '').replace(/"/g, '""')}"`,
-            `"${(item.itemName2 || '').replace(/"/g, '""')}"`,
-            `"${(item.size || '').replace(/"/g, '""')}"`,
-            item.quantity,
-            `"${(item.note || '').replace(/"/g, '""')}"`,
-            `"\t${(item.janCode || '')}"`
-          ];
-          csvRows.push(row.join(','));
-        });
-
-        const csvContent = '\uFEFF' + csvRows.join('\r\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        a.href = url;
-        a.download = `在庫移動依頼_${state.currentDepartment}_${dateStr}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        showToast('CSVファイルを書き出しました。', 'success');
-      }
-
-      function triggerPrint() {
-        if (state.items.length === 0) {
-          showToast('印刷するアイテムがありません。', 'warning');
-          return;
-        }
-        window.print();
-      }
-
-      // ----------------------------------------------------------------------
-      // 倉庫マスタ新規追加
-      // ----------------------------------------------------------------------
-
-      async function handleAddWarehouseSubmit(e) {
-        e.preventDefault();
-        const dept = el.newWhDept.value;
-        const code = el.newWhCode.value.trim();
-        const name = el.newWhName.value.trim();
-
-        if (!code || !name) {
-          showToast('倉庫コードと倉庫名を入力してください。', 'warning');
-          return;
-        }
-
-        const newWh = { department: dept, code: code, name: name };
-        el.loadingText.textContent = '倉庫マスタを更新中...';
-        el.loadingOverlay.classList.remove('hidden');
-
-        try {
-          const res = await fetch(GAS_WEB_APP_URL, {
-            method: 'POST',
-            body: JSON.stringify({ action: 'saveWarehouseMaster', data: [newWh] })
-          });
-          const json = await res.json();
-          el.loadingOverlay.classList.add('hidden');
-          showToast('倉庫を登録しました。', 'success');
-          fetchMasterData();
-          closeAddWarehouseModal();
-        } catch (err) {
-          el.loadingOverlay.classList.add('hidden');
-          showToast('登録エラー: ' + err.message, 'error');
-        }
-      }
-
-      function openAddWarehouseModal() {
-        el.newWhDept.value = state.currentDepartment;
-        el.newWhCode.value = '';
-        el.newWhName.value = '';
-        el.addWarehouseModal.classList.remove('hidden');
-        setTimeout(() => el.newWhCode.focus(), 100);
-      }
-
-      function closeAddWarehouseModal() {
-        el.addWarehouseModal.classList.add('hidden');
-      }
-
-      // ----------------------------------------------------------------------
-      // イベントリスナーのバインド
-      // ----------------------------------------------------------------------
-      function bindEvents() {
-        el.operatorNameInput.addEventListener('input', function() {
-          state.operatorName = el.operatorNameInput.value.trim();
-          saveStateToStorage();
-        });
-
-        el.deptSelect.addEventListener('change', function() {
-          state.currentDepartment = el.deptSelect.value;
-          updateWarehouseDropdowns();
-          renderTable();
-          saveStateToStorage();
-        });
-
-        el.sourceWarehouseSelect.addEventListener('change', function() {
-          state.sourceWarehouse = el.sourceWarehouseSelect.value;
-          saveStateToStorage();
-        });
-        el.destWarehouseSelect.addEventListener('change', function() {
-          state.destWarehouse = el.destWarehouseSelect.value;
-          saveStateToStorage();
-        });
-
-        el.swapWarehouseBtn.addEventListener('click', swapWarehouses);
-        el.toggleCameraBtn.addEventListener('click', toggleCamera);
-
-        el.manualInputForm.addEventListener('submit', function(e) {
-          e.preventDefault();
-          const code = el.manualCodeInput.value.trim();
-          if (!code) return;
-          openQuantityModalByCode(code);
-          el.manualCodeInput.value = '';
-        });
-
-        el.refreshMasterBtn.addEventListener('click', fetchMasterData);
-
-        el.qtyPlusBtn.addEventListener('click', function() {
-          const val = parseInt(el.modalQtyInput.value, 10) || 0;
-          el.modalQtyInput.value = val + 1;
-        });
-
-        el.qtyMinusBtn.addEventListener('click', function() {
-          const val = parseInt(el.modalQtyInput.value, 10) || 1;
-          if (val > 1) el.modalQtyInput.value = val - 1;
-        });
-
-        document.querySelectorAll('.quick-add-btn').forEach(function(btn) {
-          btn.addEventListener('click', function() {
-            const add = parseInt(btn.getAttribute('data-val'), 10);
-            const val = parseInt(el.modalQtyInput.value, 10) || 0;
-            el.modalQtyInput.value = val + add;
-          });
-        });
-
-        el.quickClearBtn.addEventListener('click', function() {
-          el.modalQtyInput.value = '1';
-        });
-
-        el.confirmQtyModalBtn.addEventListener('click', confirmQuantityModal);
-        el.cancelQtyModalBtn.addEventListener('click', closeQuantityModal);
-        el.closeQtyModalBtn.addEventListener('click', closeQuantityModal);
-
-        el.modalQtyInput.addEventListener('keydown', function(e) {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            confirmQuantityModal();
-          }
-        });
-
-        el.modalNoteInput.addEventListener('keydown', function(e) {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            confirmQuantityModal();
-          }
-        });
-
-        el.listSearchInput.addEventListener('input', renderTable);
-        el.exportCsvBtn.addEventListener('click', exportCsv);
-        el.printListBtn.addEventListener('click', triggerPrint);
-        el.submitToSheetBtn.addEventListener('click', submitToSpreadsheet);
-
-        el.openClearModalBtn.addEventListener('click', function() {
-          el.clearModalCount.textContent = state.items.length;
-          el.clearConfirmModal.classList.remove('hidden');
-        });
-        el.cancelClearBtn.addEventListener('click', function() {
-          el.clearConfirmModal.classList.add('hidden');
-        });
-        el.confirmClearBtn.addEventListener('click', function() {
-          el.clearConfirmModal.classList.add('hidden');
-          clearAllItems();
-        });
-
-        el.openAddWarehouseModalBtn.addEventListener('click', openAddWarehouseModal);
-        el.closeAddWarehouseModalBtn.addEventListener('click', closeAddWarehouseModal);
-        el.cancelAddWarehouseBtn.addEventListener('click', closeAddWarehouseModal);
-        el.addWarehouseForm.addEventListener('submit', handleAddWarehouseSubmit);
-      }
-
-      function showToast(message, type) {
-        const toast = document.createElement('div');
-        toast.className = 'px-4 py-2.5 rounded-lg shadow-lg text-xs font-semibold flex items-center space-x-2 text-white pointer-events-auto transform transition-all duration-300 translate-y-2 opacity-0';
-        if (type === 'success') toast.classList.add('bg-emerald-600');
-        else if (type === 'error') toast.classList.add('bg-rose-600');
-        else if (type === 'warning') toast.classList.add('bg-amber-600');
-        else toast.classList.add('bg-slate-800');
-        toast.textContent = message;
-        el.toastContainer.appendChild(toast);
-        setTimeout(() => toast.classList.remove('translate-y-2', 'opacity-0'), 10);
-        setTimeout(() => {
-          toast.classList.add('opacity-0', 'translate-y-2');
-          setTimeout(() => toast.remove(), 300);
-        }, 3500);
-      }
-
-      function escapeHtml(str) {
-        if (!str) return '';
-        return String(str)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#039;');
-      }
-
-      document.addEventListener('DOMContentLoaded', init);
-    })();
+    }
   </script>
 </body>
 </html>
