@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>在庫移動依頼リスト作成 WEBアプリ</title>
 
   <!-- Tailwind CSS CDN -->
@@ -174,7 +174,7 @@
       </div>
     </section>
 
-    <!-- 2. バーコードスキャン & 手入力エリア -->
+    <!-- 2. バーコードスキャン & 商品検索パネルエリア -->
     <section class="no-print grid grid-cols-1 lg:grid-cols-12 gap-4">
       
       <!-- カメラ・スキャナーコンテナ -->
@@ -217,39 +217,40 @@
         </div>
       </div>
 
-      <!-- 手動入力エリア -->
-      <div class="lg:col-span-5 bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col justify-between">
+      <!-- 商品検索パネル（JAN/商品コード手動入力・スペース区切りAND検索対応） -->
+      <div class="lg:col-span-5 bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col justify-between relative">
         <div>
           <h2 class="text-sm font-bold text-slate-800 mb-2 flex items-center">
-            <span class="mr-1.5">⌨️</span> JAN・商品コード手動入力
+            <span class="mr-1.5">🔍</span> 商品検索パネル (スペース区切りAND)
           </h2>
-          <form id="manualInputForm" class="space-y-3">
-            <div>
-              <label for="manualCodeInput" class="block text-xs font-semibold text-slate-600 mb-1">
-                JANコード または 商品コード
-              </label>
-              <div class="flex space-x-2">
-                <input type="text" id="manualCodeInput" placeholder="例: 4580123456789" autocomplete="off"
-                       class="flex-1 bg-slate-50 border border-slate-300 text-slate-900 rounded-lg p-2.5 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
-                <button type="submit" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-lg shadow-sm transition active:scale-95 whitespace-nowrap">
-                  検索・追加
-                </button>
-              </div>
+          <div class="relative">
+            <div class="flex space-x-2">
+              <input type="text" id="productSearchInput" placeholder="例: Tシャツ ホワイト M または JAN" autocomplete="off"
+                     class="flex-1 bg-slate-50 border border-slate-300 text-slate-900 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+              <button type="button" id="productSearchClearBtn" class="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg transition active:scale-95">
+                クリア
+              </button>
             </div>
-          </form>
+
+            <!-- 予測候補サジェストドロップダウン (最大15件) -->
+            <div id="productSuggestDropdown" class="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-72 overflow-y-auto z-40 hidden divide-y divide-slate-100">
+              <!-- 動的生成 -->
+            </div>
+          </div>
 
           <div class="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
-            <div class="text-xs font-semibold text-slate-500 mb-1">直近のスキャン情報</div>
+            <div class="text-xs font-semibold text-slate-500 mb-1">直近のスキャン・選択情報</div>
             <div id="lastScannedInfo" class="text-xs text-slate-600">
-              まだスキャンされていません。バーコードをかざしてください。
+              まだ選択されていません。バーコード読込または名称検索してください。
             </div>
           </div>
         </div>
 
         <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
           <span>マスタ登録商品数: <span id="productMasterCount" class="font-bold text-slate-700">0</span> 件</span>
-          <button id="refreshMasterBtn" type="button" class="text-indigo-600 hover:text-indigo-800 font-bold">
-            🔄 マスタ再読み込み
+          <button id="refreshMasterBtn" type="button" class="text-indigo-600 hover:text-indigo-800 font-bold flex items-center space-x-1">
+            <span id="refreshMasterSpinner" class="hidden animate-spin">🔄</span>
+            <span>マスタ更新</span>
           </button>
         </div>
       </div>
@@ -338,7 +339,7 @@
       <div id="emptyListNotice" class="text-center py-12 px-4">
         <div class="text-4xl mb-2 text-slate-300">📦</div>
         <p class="text-sm font-semibold text-slate-600">依頼リストにアイテムがありません</p>
-        <p class="text-xs text-slate-400 mt-1">バーコードをスキャンするか、商品コードを手入力して追加してください</p>
+        <p class="text-xs text-slate-400 mt-1">バーコードをスキャンするか、商品名・コードで検索して追加してください</p>
       </div>
 
       <div class="p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between text-xs text-slate-600">
@@ -494,17 +495,15 @@
   <!-- JavaScript アプリケーションコアロジック -->
   <script>
     (function() {
-      // ----------------------------------------------------------------------
-      // GAS Web App URL (※デプロイしたウェブアプリURLを設定)
-      // ----------------------------------------------------------------------
-      const GAS_WEB_APP_URL = "https://script.google.com/macros/s/YOUR_DEPLOYED_SCRIPT_ID/exec";
+      const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwjleEuc_9S32z9wEsiDotXrAEy8-_FNK3fIpR8CJ1WO0p7rdceHS4iJJavQpoqtueP/exec";
 
       const STORAGE_KEYS = {
         ITEMS: 'transfer_app_items_v2',
         OPERATOR: 'transfer_app_operator_v2',
         DEPARTMENT: 'transfer_app_department_v2',
         SOURCE_WH: 'transfer_app_source_wh_v2',
-        DEST_WH: 'transfer_app_dest_wh_v2'
+        DEST_WH: 'transfer_app_dest_wh_v2',
+        MASTER_CACHE: 'transfer_app_master_cache_v2'
       };
 
       let state = {
@@ -548,11 +547,13 @@
         scanOverlay: document.getElementById('scanOverlay'),
         soundToggle: document.getElementById('soundToggle'),
 
-        manualInputForm: document.getElementById('manualInputForm'),
-        manualCodeInput: document.getElementById('manualCodeInput'),
+        productSearchInput: document.getElementById('productSearchInput'),
+        productSearchClearBtn: document.getElementById('productSearchClearBtn'),
+        productSuggestDropdown: document.getElementById('productSuggestDropdown'),
         lastScannedInfo: document.getElementById('lastScannedInfo'),
         productMasterCount: document.getElementById('productMasterCount'),
         refreshMasterBtn: document.getElementById('refreshMasterBtn'),
+        refreshMasterSpinner: document.getElementById('refreshMasterSpinner'),
 
         transferTableBody: document.getElementById('transferTableBody'),
         emptyListNotice: document.getElementById('emptyListNotice'),
@@ -630,6 +631,15 @@
 
           state.sourceWarehouse = localStorage.getItem(STORAGE_KEYS.SOURCE_WH) || '';
           state.destWarehouse = localStorage.getItem(STORAGE_KEYS.DEST_WH) || '';
+
+          const cache = localStorage.getItem(STORAGE_KEYS.MASTER_CACHE);
+          if (cache) {
+            const parsed = JSON.parse(cache);
+            if (parsed.productMaster) state.productMaster = parsed.productMaster;
+            if (parsed.warehouseMaster) state.warehouseMaster = parsed.warehouseMaster;
+            updateWarehouseDropdowns();
+            updateMasterCounters();
+          }
         } catch (e) {
           console.error('localStorage読み込みエラー:', e);
         }
@@ -647,65 +657,72 @@
         }
       }
 
-      // ----------------------------------------------------------------------
-      // GAS 通信レイヤー (fetch API 経由)
-      // ----------------------------------------------------------------------
-
-      async function fetchMasterData() {
-        showToast('マスタデータを読み込み中...', 'info');
-        
-        if (typeof google !== 'undefined' && google.script && google.script.run) {
-          google.script.run
-            .withSuccessHandler(handleMasterSuccess)
-            .withFailureHandler(handleMasterError)
-            .getMasterData();
-          return;
-        }
-
+      function saveMasterCache() {
         try {
-          const resProduct = await fetch(`${GAS_WEB_APP_URL}?action=getMasterData`);
-          const jsonProduct = await resProduct.json();
-          
-          const resWh = await fetch(`${GAS_WEB_APP_URL}?action=getWarehouseMaster`);
-          const jsonWh = await resWh.json();
+          localStorage.setItem(STORAGE_KEYS.MASTER_CACHE, JSON.stringify({
+            productMaster: state.productMaster,
+            warehouseMaster: state.warehouseMaster
+          }));
+        } catch (e) {}
+      }
 
-          if (jsonProduct.success && jsonWh.success) {
-            handleMasterSuccess({
-              success: true,
-              productMaster: jsonProduct.data || [],
-              warehouseMaster: jsonWh.data || []
-            });
-          } else {
-            fallbackLocalMaster();
+      function fetchMasterData() {
+        showToast('マスタデータを最新化中...', 'info');
+        el.refreshMasterSpinner.classList.remove('hidden');
+
+        const scriptP = document.createElement('script');
+        const scriptW = document.createElement('script');
+
+        window.handleProductMasterJSONP = function(res) {
+          if (res && res.success && Array.isArray(res.data)) {
+            state.productMaster = res.data.map(item => ({
+              itemCode: item.code || item.itemCode || '',
+              itemName1: item.name1 || item.itemName1 || '',
+              itemName2: item.name2 || item.itemName2 || '',
+              size: item.size || '',
+              janCode: item.jan || item.janCode || ''
+            }));
+            updateMasterCounters();
+            saveMasterCache();
+            showToast('商品マスタを最新に更新しました。', 'success');
           }
-        } catch (err) {
-          fallbackLocalMaster();
-        }
-      }
+          el.refreshMasterSpinner.classList.add('hidden');
+          delete window.handleProductMasterJSONP;
+          scriptP.remove();
+        };
 
-      function handleMasterSuccess(response) {
-        if (response && response.success) {
-          state.productMaster = response.productMaster || response.data || [];
-          state.warehouseMaster = response.warehouseMaster || [];
-          updateWarehouseDropdowns();
-          updateMasterCounters();
-          renderTable();
-          showToast('マスタデータを取得しました。', 'success');
-        } else {
-          fallbackLocalMaster();
-        }
-      }
+        window.handleWarehouseMasterJSONP = function(res) {
+          if (res && res.success && Array.isArray(res.data)) {
+            state.warehouseMaster = res.data;
+            updateWarehouseDropdowns();
+            saveMasterCache();
+          }
+          delete window.handleWarehouseMasterJSONP;
+          scriptW.remove();
+        };
 
-      function handleMasterError(error) {
-        showToast('GAS通信エラー: ' + error.message, 'error');
-        fallbackLocalMaster();
+        scriptP.src = `${GAS_WEB_APP_URL}?action=getMasterData&prefix=handleProductMasterJSONP`;
+        scriptW.src = `${GAS_WEB_APP_URL}?action=getWarehouseMaster&prefix=handleWarehouseMasterJSONP`;
+
+        scriptP.onerror = scriptW.onerror = function() {
+          el.refreshMasterSpinner.classList.add('hidden');
+          if (state.productMaster.length === 0) {
+            fallbackLocalMaster();
+          } else {
+            showToast('オフライン/通信制限のため、保存済みキャッシュマスタを使用します。', 'warning');
+          }
+        };
+
+        document.body.appendChild(scriptP);
+        document.body.appendChild(scriptW);
       }
 
       function fallbackLocalMaster() {
         state.productMaster = [
-          { itemCode: 'ITEM-001', itemName1: 'ベーシック クルーネックTシャツ', itemName2: 'ホワイト', size: 'M', janCode: '4580123456789' },
-          { itemCode: 'ITEM-002', itemName1: 'ベーシック クルーネックTシャツ', itemName2: 'ブラック', size: 'L', janCode: '4580123456796' },
-          { itemCode: 'ITEM-003', itemName1: 'リネンブレンド ワイドパンツ', itemName2: 'ベージュ', size: 'Free', janCode: '0123456789012' }
+          { itemCode: 'TS-001-WHT-M', itemName1: 'ヘビーウェイト コットンTシャツ', itemName2: 'ホワイト / レギュラーフィット', size: 'M', janCode: '4580123456789' },
+          { itemCode: 'TS-001-WHT-L', itemName1: 'ヘビーウェイト コットンTシャツ', itemName2: 'ホワイト / レギュラーフィット', size: 'L', janCode: '4580123456796' },
+          { itemCode: 'PK-022-GRY-L', itemName1: 'プレミアム裏毛 ジップパーカー', itemName2: 'ヘザーグレー / スタンダード', size: 'L', janCode: '4901234567894' },
+          { itemCode: 'PT-003-BEG-F', itemName1: 'リネンブレンド ワイドパンツ', itemName2: 'ベージュ', size: 'Free', janCode: '0123456789012' }
         ];
 
         state.warehouseMaster = [
@@ -722,10 +739,6 @@
       function updateMasterCounters() {
         el.productMasterCount.textContent = state.productMaster.length;
       }
-
-      // ----------------------------------------------------------------------
-      // 倉庫ドロップダウン連動 & 重複排除
-      // ----------------------------------------------------------------------
 
       function updateWarehouseDropdowns() {
         const dept = state.currentDepartment;
@@ -802,6 +815,79 @@
         state.destWarehouse = el.destWarehouseSelect.value;
         saveStateToStorage();
         showToast('移動元と移動先を入れ替えました。', 'info');
+      }
+
+      // ----------------------------------------------------------------------
+      // 商品検索パネル (スペース区切りAND検索 & 予測候補ドロップダウン)
+      // ----------------------------------------------------------------------
+
+      function handleProductSearchInput() {
+        const queryText = el.productSearchInput.value.trim();
+        if (!queryText) {
+          el.productSuggestDropdown.classList.add('hidden');
+          el.productSuggestDropdown.innerHTML = '';
+          return;
+        }
+
+        // スペース区切りでキーワード配列化 (大文字小文字無視)
+        const keywords = queryText.toLowerCase().split(/\s+/).filter(Boolean);
+
+        const matchedProducts = state.productMaster.filter(p => {
+          const targetStr = [
+            p.itemCode, p.code,
+            p.itemName1, p.name1,
+            p.itemName2, p.name2,
+            p.size,
+            p.janCode, p.jan
+          ].join(' ').toLowerCase();
+
+          // すべてのキーワードが含まれているか (AND検索)
+          return keywords.every(kw => targetStr.includes(kw));
+        }).slice(0, 15); // 最大15件に制限
+
+        renderProductSuggestDropdown(matchedProducts);
+      }
+
+      function renderProductSuggestDropdown(products) {
+        el.productSuggestDropdown.innerHTML = '';
+        if (products.length === 0) {
+          el.productSuggestDropdown.innerHTML = '<div class="p-3 text-xs text-slate-400 text-center">該当する商品が見つかりません</div>';
+          el.productSuggestDropdown.classList.remove('hidden');
+          return;
+        }
+
+        products.forEach(p => {
+          const itemCode = p.itemCode || p.code || '';
+          const name1 = p.itemName1 || p.name1 || '';
+          const name2 = p.itemName2 || p.name2 || '';
+          const size = p.size || '-';
+          const jan = p.janCode || p.jan || '-';
+
+          const div = document.createElement('div');
+          div.className = 'p-2.5 hover:bg-indigo-50 cursor-pointer transition text-xs flex flex-col space-y-0.5';
+          div.innerHTML = `
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-slate-900">${escapeHtml(name1)}</span>
+              <span class="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded font-semibold text-[10px]">${escapeHtml(size)}</span>
+            </div>
+            <div class="text-slate-500">${escapeHtml(name2)}</div>
+            <div class="flex justify-between font-mono text-[10px] text-indigo-600 pt-0.5">
+              <span>品番: ${escapeHtml(itemCode)}</span>
+              <span>JAN: ${escapeHtml(jan)}</span>
+            </div>
+          `;
+
+          div.addEventListener('click', function() {
+            el.productSuggestDropdown.classList.add('hidden');
+            el.productSearchInput.value = '';
+            el.lastScannedInfo.innerHTML = '選択商品: <strong class="text-indigo-600 font-mono">' + escapeHtml(itemCode) + '</strong> (' + new Date().toLocaleTimeString() + ')';
+            openQuantityModalByCode(itemCode);
+          });
+
+          el.productSuggestDropdown.appendChild(div);
+        });
+
+        el.productSuggestDropdown.classList.remove('hidden');
       }
 
       // ----------------------------------------------------------------------
@@ -1076,10 +1162,6 @@
         }, 100);
       }
 
-      // ----------------------------------------------------------------------
-      // スプレッドシート送信 (fetch API 経由)
-      // ----------------------------------------------------------------------
-
       async function submitToSpreadsheet() {
         if (state.items.length === 0) {
           showToast('送信するアイテムがありません。', 'warning');
@@ -1118,18 +1200,9 @@
         el.loadingText.textContent = '【' + state.currentDepartment + '】シートへ送信中...';
         el.loadingOverlay.classList.remove('hidden');
 
-        if (typeof google !== 'undefined' && google.script && google.script.run) {
-          google.script.run
-            .withSuccessHandler(handleSendSuccess)
-            .withFailureHandler(handleSendError)
-            .saveTransferData(formattedItems, { department: state.currentDepartment });
-          return;
-        }
-
         try {
           const res = await fetch(GAS_WEB_APP_URL, {
             method: 'POST',
-            contentType: 'application/json',
             body: JSON.stringify(payload)
           });
           const json = await res.json();
@@ -1163,10 +1236,6 @@
         renderTable();
         showToast('リストをクリアしました。', 'info');
       }
-
-      // ----------------------------------------------------------------------
-      // CSV出力 & A4印刷機能
-      // ----------------------------------------------------------------------
 
       function exportCsv() {
         if (state.items.length === 0) {
@@ -1213,10 +1282,6 @@
         window.print();
       }
 
-      // ----------------------------------------------------------------------
-      // 倉庫マスタ新規追加
-      // ----------------------------------------------------------------------
-
       async function handleAddWarehouseSubmit(e) {
         e.preventDefault();
         const dept = el.newWhDept.value;
@@ -1232,22 +1297,9 @@
         el.loadingText.textContent = '倉庫マスタを更新中...';
         el.loadingOverlay.classList.remove('hidden');
 
-        if (typeof google !== 'undefined' && google.script && google.script.run) {
-          google.script.run
-            .withSuccessHandler(function(res) {
-              el.loadingOverlay.classList.add('hidden');
-              showToast('倉庫を登録しました。', 'success');
-              fetchMasterData();
-              closeAddWarehouseModal();
-            })
-            .saveWarehouseMasterData([newWh]);
-          return;
-        }
-
         try {
           const res = await fetch(GAS_WEB_APP_URL, {
             method: 'POST',
-            contentType: 'application/json',
             body: JSON.stringify({ action: 'saveWarehouseMaster', data: [newWh] })
           });
           const json = await res.json();
@@ -1273,9 +1325,6 @@
         el.addWarehouseModal.classList.add('hidden');
       }
 
-      // ----------------------------------------------------------------------
-      // イベントリスナーのバインド
-      // ----------------------------------------------------------------------
       function bindEvents() {
         el.operatorNameInput.addEventListener('input', function() {
           state.operatorName = el.operatorNameInput.value.trim();
@@ -1301,12 +1350,21 @@
         el.swapWarehouseBtn.addEventListener('click', swapWarehouses);
         el.toggleCameraBtn.addEventListener('click', toggleCamera);
 
-        el.manualInputForm.addEventListener('submit', function(e) {
-          e.preventDefault();
-          const code = el.manualCodeInput.value.trim();
-          if (!code) return;
-          openQuantityModalByCode(code);
-          el.manualCodeInput.value = '';
+        // 商品検索パネルのイベント
+        el.productSearchInput.addEventListener('input', handleProductSearchInput);
+        el.productSearchInput.addEventListener('focus', handleProductSearchInput);
+        
+        el.productSearchClearBtn.addEventListener('click', function() {
+          el.productSearchInput.value = '';
+          el.productSuggestDropdown.classList.add('hidden');
+          el.productSearchInput.focus();
+        });
+
+        // 外部をクリックしたときにサジェストを閉じる
+        document.addEventListener('click', function(e) {
+          if (!el.productSearchInput.contains(e.target) && !el.productSuggestDropdown.contains(e.target)) {
+            el.productSuggestDropdown.classList.add('hidden');
+          }
         });
 
         el.refreshMasterBtn.addEventListener('click', fetchMasterData);
