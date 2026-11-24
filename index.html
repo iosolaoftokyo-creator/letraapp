@@ -102,8 +102,8 @@
                  class="bg-transparent text-white font-medium focus:outline-none w-24 sm:w-32 border-b border-transparent focus:border-indigo-400 text-xs sm:text-sm" />
         </div>
         <div id="connectionStatus" class="flex items-center px-2.5 py-1 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 text-xs">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse mr-1.5"></span>
-          <span>オンライン</span>
+          <span id="connectionDot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse mr-1.5"></span>
+          <span id="connectionText">オンライン</span>
         </div>
       </div>
     </div>
@@ -414,7 +414,7 @@
 
       <div class="p-3 bg-slate-50 border-t border-slate-200 flex space-x-2">
         <button type="button" id="cancelQtyModalBtn" class="flex-1 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold active:scale-95">
-          キャンセル
+          キャンセル (Esc)
         </button>
         <button type="button" id="confirmQtyModalBtn" class="flex-1 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md active:scale-95">
           リストに追加 (Enter)
@@ -497,6 +497,8 @@
   <script>
     (function() {
       const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwjleEuc_9S32z9wEsiDotXrAEy8-_FNK3fIpR8CJ1WO0p7rdceHS4iJJavQpoqtueP/exec";
+      const SCAN_COOLDOWN_MS = 1800;
+      const MASTER_FETCH_TIMEOUT_MS = 8000;
 
       const STORAGE_KEYS = {
         ITEMS: 'transfer_app_items_v2',
@@ -519,7 +521,9 @@
         scanner: null,
         isScanning: false,
         pendingScannedProduct: null,
-        editItemIndex: null
+        editItemId: null,
+        lastScannedCode: '',
+        lastScannedAt: 0
       };
 
       const DEFAULT_COMMON_WAREHOUSES = [
@@ -534,6 +538,9 @@
 
       const el = {
         operatorNameInput: document.getElementById('operatorNameInput'),
+        connectionStatus: document.getElementById('connectionStatus'),
+        connectionDot: document.getElementById('connectionDot'),
+        connectionText: document.getElementById('connectionText'),
         deptSelect: document.getElementById('deptSelect'),
         sourceWarehouseSelect: document.getElementById('sourceWarehouseSelect'),
         destWarehouseSelect: document.getElementById('destWarehouseSelect'),
@@ -607,16 +614,46 @@
         printTotalQty: document.getElementById('printTotalQty')
       };
 
+      function generateItemId() {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+          return crypto.randomUUID();
+        }
+        return 'item_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+      }
+
       function init() {
+        updateConnectionStatus();
         loadLocalStorage();
         bindEvents();
+        renderTable();
         fetchMasterData();
+      }
+
+      function updateConnectionStatus() {
+        const isOnline = navigator.onLine !== false;
+        if (isOnline) {
+          el.connectionStatus.className = 'flex items-center px-2.5 py-1 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 text-xs';
+          el.connectionDot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse mr-1.5';
+          el.connectionText.textContent = 'オンライン';
+        } else {
+          el.connectionStatus.className = 'flex items-center px-2.5 py-1 rounded-full bg-rose-950 text-rose-400 border border-rose-800 text-xs';
+          el.connectionDot.className = 'w-2 h-2 rounded-full bg-rose-400 mr-1.5';
+          el.connectionText.textContent = 'オフライン';
+        }
       }
 
       function loadLocalStorage() {
         try {
           const savedItems = localStorage.getItem(STORAGE_KEYS.ITEMS);
-          if (savedItems) state.items = JSON.parse(savedItems);
+          if (savedItems) {
+            const parsedItems = JSON.parse(savedItems);
+            if (Array.isArray(parsedItems)) {
+              state.items = parsedItems.map(item => ({
+                ...item,
+                id: item.id || generateItemId()
+              }));
+            }
+          }
 
           const savedOp = localStorage.getItem(STORAGE_KEYS.OPERATOR);
           if (savedOp) {
@@ -671,8 +708,45 @@
         showToast('マスタデータを最新化中...', 'info');
         el.refreshMasterSpinner.classList.remove('hidden');
 
+        let completedCount = 0;
+        let settled = false;
+
         const scriptP = document.createElement('script');
         const scriptW = document.createElement('script');
+
+        const cleanup = function() {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
+          el.refreshMasterSpinner.classList.add('hidden');
+          try { delete window.handleProductMasterJSONP; } catch (e) {}
+          try { delete window.handleWarehouseMasterJSONP; } catch (e) {}
+          if (scriptP.parentNode) scriptP.remove();
+          if (scriptW.parentNode) scriptW.remove();
+        };
+
+        const checkAllFinished = function(hadError) {
+          completedCount += 1;
+          if (completedCount >= 2 && !settled) {
+            settled = true;
+            cleanup();
+            if (hadError && state.productMaster.length === 0) {
+              fallbackLocalMaster();
+            }
+          }
+        };
+
+        const timeoutId = setTimeout(function() {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          if (state.productMaster.length === 0) {
+            fallbackLocalMaster();
+            showToast('通信タイムアウトのため、サンプルマスタを使用します。', 'warning');
+          } else {
+            showToast('通信タイムアウトのため、保存済みキャッシュマスタを使用します。', 'warning');
+          }
+        }, MASTER_FETCH_TIMEOUT_MS);
 
         window.handleProductMasterJSONP = function(res) {
           if (res && res.success && Array.isArray(res.data)) {
@@ -687,9 +761,7 @@
             saveMasterCache();
             showToast('商品マスタを最新に更新しました。', 'success');
           }
-          el.refreshMasterSpinner.classList.add('hidden');
-          delete window.handleProductMasterJSONP;
-          scriptP.remove();
+          checkAllFinished(false);
         };
 
         window.handleWarehouseMasterJSONP = function(res) {
@@ -698,20 +770,21 @@
             updateWarehouseDropdowns();
             saveMasterCache();
           }
-          delete window.handleWarehouseMasterJSONP;
-          scriptW.remove();
+          checkAllFinished(false);
         };
 
-        scriptP.src = `${GAS_WEB_APP_URL}?action=getMasterData&prefix=handleProductMasterJSONP`;
-        scriptW.src = `${GAS_WEB_APP_URL}?action=getWarehouseMaster&prefix=handleWarehouseMasterJSONP`;
+        scriptP.src = `${GAS_WEB_APP_URL}?action=getMasterData&prefix=handleProductMasterJSONP&_t=${Date.now()}`;
+        scriptW.src = `${GAS_WEB_APP_URL}?action=getWarehouseMaster&prefix=handleWarehouseMasterJSONP&_t=${Date.now()}`;
 
-        scriptP.onerror = scriptW.onerror = function() {
-          el.refreshMasterSpinner.classList.add('hidden');
-          if (state.productMaster.length === 0) {
-            fallbackLocalMaster();
-          } else {
+        scriptP.onerror = function() {
+          if (!settled && state.productMaster.length > 0) {
             showToast('オフライン/通信制限のため、保存済みキャッシュマスタを使用します。', 'warning');
           }
+          checkAllFinished(true);
+        };
+
+        scriptW.onerror = function() {
+          checkAllFinished(true);
         };
 
         document.body.appendChild(scriptP);
@@ -739,6 +812,14 @@
 
       function updateMasterCounters() {
         el.productMasterCount.textContent = state.productMaster.length;
+      }
+
+      function warnIfSameWarehouse() {
+        const src = el.sourceWarehouseSelect.value;
+        const dst = el.destWarehouseSelect.value;
+        if (src && dst && src === dst) {
+          showToast('移動元と移動先に同じ倉庫が選択されています。確認してください。', 'warning');
+        }
       }
 
       function updateWarehouseDropdowns() {
@@ -816,6 +897,7 @@
         state.destWarehouse = el.destWarehouseSelect.value;
         saveStateToStorage();
         showToast('移動元と移動先を入れ替えました。', 'info');
+        warnIfSameWarehouse();
       }
 
       // ----------------------------------------------------------------------
@@ -947,6 +1029,14 @@
           return;
         }
 
+        // 同一バーコードの短時間連続検知をスキップ（クールダウン）
+        const now = Date.now();
+        if (state.lastScannedCode === cleanCode && (now - state.lastScannedAt) < SCAN_COOLDOWN_MS) {
+          return;
+        }
+        state.lastScannedCode = cleanCode;
+        state.lastScannedAt = now;
+
         const product = findProduct(cleanCode);
         if (!product) {
           showToast('該当の商品マスタが存在しません', 'error');
@@ -982,6 +1072,17 @@
       // 数量入力モーダル UX
       // ----------------------------------------------------------------------
 
+      function sanitizeQtyInput() {
+        const raw = el.modalQtyInput.value;
+        if (raw === '') return;
+        const parsed = parseInt(raw, 10);
+        if (isNaN(parsed) || parsed < 1) {
+          el.modalQtyInput.value = '1';
+        } else if (parsed > 9999) {
+          el.modalQtyInput.value = '9999';
+        }
+      }
+
       function openQuantityModalByCode(code, options = {}) {
         const allowUnregistered = Boolean(options.allowUnregistered);
         const product = findProduct(code);
@@ -991,6 +1092,8 @@
           return;
         }
 
+        warnIfSameWarehouse();
+
         state.pendingScannedProduct = product || {
           itemCode: code,
           itemName1: 'マスタ未登録商品 (' + code + ')',
@@ -998,7 +1101,7 @@
           size: '-',
           janCode: code
         };
-        state.editItemIndex = null;
+        state.editItemId = null;
         el.modalItemName1.textContent = state.pendingScannedProduct.itemName1 || state.pendingScannedProduct.name1 || '-';
         el.modalItemName2.textContent = state.pendingScannedProduct.itemName2 || state.pendingScannedProduct.name2 || '-';
         el.modalSize.textContent = state.pendingScannedProduct.size || '-';
@@ -1027,32 +1130,68 @@
         const qty = parseInt(el.modalQtyInput.value, 10);
         if (isNaN(qty) || qty <= 0) {
           showToast('数量には1以上の数値を入力してください。', 'warning');
+          el.modalQtyInput.value = '1';
           el.modalQtyInput.focus();
+          el.modalQtyInput.select();
           return;
         }
 
         const note = el.modalNoteInput.value.trim();
         const p = state.pendingScannedProduct;
+        if (!p) {
+          closeQuantityModal();
+          return;
+        }
 
-        if (state.editItemIndex !== null && state.editItemIndex >= 0) {
-          state.items[state.editItemIndex].quantity = qty;
-          state.items[state.editItemIndex].note = note;
-          showToast('アイテムを更新しました。', 'success');
+        const sourceWh = el.sourceWarehouseSelect.value;
+        const destWh = el.destWarehouseSelect.value;
+        const itemCode = p.itemCode || p.code || '';
+        const itemName1 = p.itemName1 || p.name1 || '';
+        const itemName2 = p.itemName2 || p.name2 || '';
+        const size = p.size || '';
+        const janCode = p.janCode || p.jan || '';
+
+        if (state.editItemId) {
+          const targetIdx = state.items.findIndex(item => item.id === state.editItemId);
+          if (targetIdx >= 0) {
+            state.items[targetIdx].quantity = qty;
+            state.items[targetIdx].note = note;
+            showToast('アイテムを更新しました。', 'success');
+          }
         } else {
-          const newItem = {
-            sourceWarehouse: el.sourceWarehouseSelect.value,
-            destWarehouse: el.destWarehouseSelect.value,
-            itemCode: p.itemCode || p.code || '',
-            itemName1: p.itemName1 || p.name1 || '',
-            itemName2: p.itemName2 || p.name2 || '',
-            size: p.size || '',
-            janCode: p.janCode || p.jan || '',
-            quantity: qty,
-            note: note,
-            addedAt: new Date().toISOString()
-          };
-          state.items.unshift(newItem);
-          showToast((newItem.itemName1 || 'アイテム') + ' (' + qty + '点) を追加しました。', 'success');
+          // 移動元・移動先・商品コード・サイズ・備考が一致する行があれば数量を合算して先頭へ移動
+          const existingIdx = state.items.findIndex(item =>
+            item.sourceWarehouse === sourceWh &&
+            item.destWarehouse === destWh &&
+            String(item.itemCode) === String(itemCode) &&
+            String(item.size) === String(size) &&
+            String(item.note || '') === note
+          );
+
+          if (existingIdx >= 0) {
+            const existingItem = state.items[existingIdx];
+            existingItem.quantity = (parseInt(existingItem.quantity, 10) || 0) + qty;
+            existingItem.addedAt = new Date().toISOString();
+            state.items.splice(existingIdx, 1);
+            state.items.unshift(existingItem);
+            showToast((itemName1 || 'アイテム') + ' の数量を合算しました（計 ' + existingItem.quantity + ' 点）。', 'success');
+          } else {
+            const newItem = {
+              id: generateItemId(),
+              sourceWarehouse: sourceWh,
+              destWarehouse: destWh,
+              itemCode: itemCode,
+              itemName1: itemName1,
+              itemName2: itemName2,
+              size: size,
+              janCode: janCode,
+              quantity: qty,
+              note: note,
+              addedAt: new Date().toISOString()
+            };
+            state.items.unshift(newItem);
+            showToast((itemName1 || 'アイテム') + ' (' + qty + '点) を追加しました。', 'success');
+          }
         }
 
         saveStateToStorage();
@@ -1065,7 +1204,7 @@
       function closeQuantityModal() {
         el.quantityModal.classList.add('hidden');
         state.pendingScannedProduct = null;
-        state.editItemIndex = null;
+        state.editItemId = null;
       }
 
       // ----------------------------------------------------------------------
@@ -1108,7 +1247,7 @@
         el.printTotalQty.textContent = totalQty;
 
         displayItems.forEach(function(item, idx) {
-          const originalIndex = state.items.indexOf(item);
+          const itemId = item.id;
           const tr = document.createElement('tr');
           tr.className = 'hover:bg-slate-50 transition border-b border-slate-100';
 
@@ -1123,8 +1262,8 @@
             <td class="py-2.5 px-3 text-right font-bold text-slate-900 text-sm">${item.quantity}</td>
             <td class="py-2.5 px-3 text-slate-500">${escapeHtml(item.note || '-')}</td>
             <td class="py-2.5 px-3 text-center no-print whitespace-nowrap">
-              <button type="button" class="edit-item-btn text-indigo-600 hover:text-indigo-800 font-medium mr-2" data-idx="${originalIndex}">編集</button>
-              <button type="button" class="delete-item-btn text-rose-600 hover:text-rose-800 font-medium" data-idx="${originalIndex}">削除</button>
+              <button type="button" class="edit-item-btn text-indigo-600 hover:text-indigo-800 font-medium mr-2" data-id="${escapeHtml(itemId)}">編集</button>
+              <button type="button" class="delete-item-btn text-rose-600 hover:text-rose-800 font-medium" data-id="${escapeHtml(itemId)}">削除</button>
             </td>
           `;
 
@@ -1133,32 +1272,33 @@
 
         el.transferTableBody.querySelectorAll('.delete-item-btn').forEach(function(btn) {
           btn.addEventListener('click', function() {
-            const index = parseInt(btn.getAttribute('data-idx'), 10);
-            deleteItem(index);
+            const id = btn.getAttribute('data-id');
+            deleteItemById(id);
           });
         });
 
         el.transferTableBody.querySelectorAll('.edit-item-btn').forEach(function(btn) {
           btn.addEventListener('click', function() {
-            const index = parseInt(btn.getAttribute('data-idx'), 10);
-            openEditItemModal(index);
+            const id = btn.getAttribute('data-id');
+            openEditItemModalById(id);
           });
         });
 
         el.submitToSheetBtn.disabled = state.items.length === 0;
       }
 
-      function deleteItem(index) {
-        if (index >= 0 && index < state.items.length) {
-          state.items.splice(index, 1);
+      function deleteItemById(id) {
+        const idx = state.items.findIndex(item => item.id === id);
+        if (idx >= 0) {
+          state.items.splice(idx, 1);
           saveStateToStorage();
           renderTable();
           showToast('アイテムを削除しました。', 'info');
         }
       }
 
-      function openEditItemModal(index) {
-        const item = state.items[index];
+      function openEditItemModalById(id) {
+        const item = state.items.find(i => i.id === id);
         if (!item) return;
         state.pendingScannedProduct = {
           itemCode: item.itemCode,
@@ -1167,7 +1307,7 @@
           size: item.size,
           janCode: item.janCode
         };
-        state.editItemIndex = index;
+        state.editItemId = item.id;
         el.modalItemName1.textContent = item.itemName1;
         el.modalItemName2.textContent = item.itemName2 || '-';
         el.modalSize.textContent = item.size || '-';
@@ -1182,6 +1322,18 @@
         }, 100);
       }
 
+      async function parseGasResponse(res) {
+        const text = await res.text();
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${text.slice(0, 120)}`);
+        }
+        try {
+          return JSON.parse(text);
+        } catch (e) {
+          throw new Error('サーバーから不正なレスポンス形式が返されました。');
+        }
+      }
+
       async function submitToSpreadsheet() {
         if (state.items.length === 0) {
           showToast('送信するアイテムがありません。', 'warning');
@@ -1193,6 +1345,12 @@
           showToast('作業者名を入力してください。', 'warning');
           el.operatorNameInput.focus();
           return;
+        }
+
+        const hasSameWarehouse = state.items.some(item => item.sourceWarehouse === item.destWarehouse);
+        if (hasSameWarehouse) {
+          const proceed = confirm('移動元と移動先が同一の倉庫になっている行があります。このままスプレッドシートへ送信しますか？');
+          if (!proceed) return;
         }
 
         state.operatorName = operator;
@@ -1225,7 +1383,7 @@
             method: 'POST',
             body: JSON.stringify(payload)
           });
-          const json = await res.json();
+          const json = await parseGasResponse(res);
           handleSendSuccess(json);
         } catch (err) {
           handleSendError(err);
@@ -1241,7 +1399,7 @@
             if (shouldClear) clearAllItems();
           }, 300);
         } else {
-          showToast('保存エラー: ' + (response.message || '不明なエラー'), 'error');
+          showToast('保存エラー: ' + ((response && response.message) || '不明なエラー'), 'error');
         }
       }
 
@@ -1322,8 +1480,12 @@
             method: 'POST',
             body: JSON.stringify({ action: 'saveWarehouseMaster', data: [newWh] })
           });
-          const json = await res.json();
+          const json = await parseGasResponse(res);
           el.loadingOverlay.classList.add('hidden');
+          if (json && json.success === false) {
+            showToast('登録エラー: ' + (json.message || '登録に失敗しました'), 'error');
+            return;
+          }
           showToast('倉庫を登録しました。', 'success');
           fetchMasterData();
           closeAddWarehouseModal();
@@ -1346,6 +1508,16 @@
       }
 
       function bindEvents() {
+        window.addEventListener('online', function() {
+          updateConnectionStatus();
+          showToast('オンラインに復帰しました。', 'success');
+        });
+
+        window.addEventListener('offline', function() {
+          updateConnectionStatus();
+          showToast('オフライン状態になりました。ローカル保存は継続されます。', 'warning');
+        });
+
         el.operatorNameInput.addEventListener('input', function() {
           state.operatorName = el.operatorNameInput.value.trim();
           saveStateToStorage();
@@ -1356,15 +1528,18 @@
           updateWarehouseDropdowns();
           renderTable();
           saveStateToStorage();
+          warnIfSameWarehouse();
         });
 
         el.sourceWarehouseSelect.addEventListener('change', function() {
           state.sourceWarehouse = el.sourceWarehouseSelect.value;
           saveStateToStorage();
+          warnIfSameWarehouse();
         });
         el.destWarehouseSelect.addEventListener('change', function() {
           state.destWarehouse = el.destWarehouseSelect.value;
           saveStateToStorage();
+          warnIfSameWarehouse();
         });
 
         el.swapWarehouseBtn.addEventListener('click', swapWarehouses);
@@ -1387,11 +1562,26 @@
           }
         });
 
+        // Escキーで開いているモーダルを閉じる
+        document.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape') {
+            if (!el.quantityModal.classList.contains('hidden')) {
+              closeQuantityModal();
+            } else if (!el.addWarehouseModal.classList.contains('hidden')) {
+              closeAddWarehouseModal();
+            } else if (!el.clearConfirmModal.classList.contains('hidden')) {
+              el.clearConfirmModal.classList.add('hidden');
+            }
+          }
+        });
+
         el.refreshMasterBtn.addEventListener('click', fetchMasterData);
+
+        el.modalQtyInput.addEventListener('input', sanitizeQtyInput);
 
         el.qtyPlusBtn.addEventListener('click', function() {
           const val = parseInt(el.modalQtyInput.value, 10) || 0;
-          el.modalQtyInput.value = val + 1;
+          el.modalQtyInput.value = Math.min(9999, val + 1);
         });
 
         el.qtyMinusBtn.addEventListener('click', function() {
@@ -1403,7 +1593,7 @@
           btn.addEventListener('click', function() {
             const add = parseInt(btn.getAttribute('data-val'), 10);
             const val = parseInt(el.modalQtyInput.value, 10) || 0;
-            el.modalQtyInput.value = val + add;
+            el.modalQtyInput.value = Math.min(9999, val + add);
           });
         });
 
