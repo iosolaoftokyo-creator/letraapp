@@ -721,6 +721,7 @@
             itemName1: i.itemName1,
             itemName2: i.itemName2,
             size: i.size,
+            janCode: i.janCode || '',
             quantity: i.quantity,
             note: i.note || ''
           }))
@@ -1239,6 +1240,35 @@
         el.scanOverlay.classList.add('hidden');
       }
 
+      function getPreviousScanSource(product) {
+        if (!product) return null;
+        const targetCode = String(product.itemCode || product.code || '').trim().toUpperCase();
+        const targetJan = String(product.janCode || product.jan || '').trim().toUpperCase();
+
+        const isSameProduct = function(candidate) {
+          if (!candidate) return false;
+          const cCode = String(candidate.itemCode || candidate.productCode || candidate.code || '').trim().toUpperCase();
+          const cJan = String(candidate.janCode || candidate.jan || '').trim().toUpperCase();
+          return (targetCode && cCode === targetCode) || (targetJan && cJan === targetJan);
+        };
+
+        // 1. 確認リスト（state.items）の直前（先頭）と同一か
+        if (Array.isArray(state.items) && state.items.length > 0 && isSameProduct(state.items[0])) {
+          return 'list';
+        }
+
+        // 2. 確認リストが空の場合は、本日の送信履歴（state.sentHistory）の最新バッチに同一商品が含まれるか
+        purgeNonTodayHistory();
+        if (Array.isArray(state.sentHistory) && state.sentHistory.length > 0) {
+          const latestBatch = state.sentHistory[0];
+          if (latestBatch && Array.isArray(latestBatch.items) && latestBatch.items.some(isSameProduct)) {
+            return 'history';
+          }
+        }
+
+        return null;
+      }
+
       function onBarcodeScannedSuccess(decodedText) {
         const cleanCode = String(decodedText || '').trim();
         if (!cleanCode) return;
@@ -1264,7 +1294,17 @@
         }
 
         playScanBeep();
+        const itemLabel = product.itemName1 || product.name1 || product.itemCode || cleanCode;
         el.lastScannedInfo.innerHTML = '直近検出: <strong class="text-indigo-600 font-mono">' + escapeHtml(cleanCode) + '</strong> (' + new Date().toLocaleTimeString() + ')';
+
+        // 直前スキャンまたは直近送信と同一商品の場合、作業を止めずに警告トーストを表示
+        const prevSource = getPreviousScanSource(product);
+        if (prevSource === 'list') {
+          showToast('注意：直前スキャンと同一の商品です（' + itemLabel + '）', 'warning');
+        } else if (prevSource === 'history') {
+          showToast('注意：直近送信と同一の商品です（' + itemLabel + '）', 'warning');
+        }
+
         openQuantityModalByCode(cleanCode, { allowUnregistered: false });
       }
 
