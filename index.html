@@ -200,8 +200,9 @@
               <p class="text-xs text-slate-500 mt-1">端末のカメラへのアクセス許可が必要です</p>
             </div>
             
+            <!-- スキャン範囲（qrbox: 190x95）に合わせた中央ガイド枠 -->
             <div id="scanOverlay" class="hidden pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div class="w-64 h-36 border-2 border-indigo-400 rounded-lg shadow-lg relative animate-pulse">
+              <div class="w-48 h-24 border-2 border-indigo-400 rounded-lg shadow-lg relative animate-pulse">
                 <div class="laser-beam"></div>
               </div>
             </div>
@@ -829,7 +830,6 @@
           return;
         }
 
-        // スペース区切りでキーワード配列化 (大文字小文字無視)
         const keywords = queryText.toLowerCase().split(/\s+/).filter(Boolean);
 
         const matchedProducts = state.productMaster.filter(p => {
@@ -841,9 +841,8 @@
             p.janCode, p.jan
           ].join(' ').toLowerCase();
 
-          // すべてのキーワードが含まれているか (AND検索)
           return keywords.every(kw => targetStr.includes(kw));
-        }).slice(0, 15); // 最大15件に制限
+        }).slice(0, 15);
 
         renderProductSuggestDropdown(matchedProducts);
       }
@@ -881,7 +880,7 @@
             el.productSuggestDropdown.classList.add('hidden');
             el.productSearchInput.value = '';
             el.lastScannedInfo.innerHTML = '選択商品: <strong class="text-indigo-600 font-mono">' + escapeHtml(itemCode) + '</strong> (' + new Date().toLocaleTimeString() + ')';
-            openQuantityModalByCode(itemCode);
+            openQuantityModalByCode(itemCode, { allowUnregistered: true });
           });
 
           el.productSuggestDropdown.appendChild(div);
@@ -905,9 +904,10 @@
           el.readerPlaceholder.classList.add('hidden');
           el.scanOverlay.classList.remove('hidden');
 
+          // 画面端のバーコードが読み取られないよう、中央の狭いエリアに qrbox を縮小
           await state.scanner.start(
             { facingMode: "environment" },
-            { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: 1.777778 },
+            { fps: 15, qrbox: { width: 190, height: 95 }, aspectRatio: 1.777778 },
             onBarcodeScannedSuccess,
             onBarcodeScanFailure
           );
@@ -941,9 +941,22 @@
       function onBarcodeScannedSuccess(decodedText) {
         const cleanCode = String(decodedText || '').trim();
         if (!cleanCode) return;
+
+        // 数量入力モーダルが開いている間の連続誤読を防止
+        if (!el.quantityModal.classList.contains('hidden')) {
+          return;
+        }
+
+        const product = findProduct(cleanCode);
+        if (!product) {
+          showToast('該当の商品マスタが存在しません', 'error');
+          el.lastScannedInfo.innerHTML = '未登録バーコード: <strong class="text-rose-600 font-mono">' + escapeHtml(cleanCode) + '</strong> (' + new Date().toLocaleTimeString() + ')';
+          return;
+        }
+
         playScanBeep();
-        el.lastScannedInfo.innerHTML = '直近検出: <strong class="text-indigo-600 font-mono">' + cleanCode + '</strong> (' + new Date().toLocaleTimeString() + ')';
-        openQuantityModalByCode(cleanCode);
+        el.lastScannedInfo.innerHTML = '直近検出: <strong class="text-indigo-600 font-mono">' + escapeHtml(cleanCode) + '</strong> (' + new Date().toLocaleTimeString() + ')';
+        openQuantityModalByCode(cleanCode, { allowUnregistered: false });
       }
 
       function onBarcodeScanFailure(error) {}
@@ -969,8 +982,15 @@
       // 数量入力モーダル UX
       // ----------------------------------------------------------------------
 
-      function openQuantityModalByCode(code) {
+      function openQuantityModalByCode(code, options = {}) {
+        const allowUnregistered = Boolean(options.allowUnregistered);
         const product = findProduct(code);
+
+        if (!product && !allowUnregistered) {
+          showToast('該当の商品マスタが存在しません', 'error');
+          return;
+        }
+
         state.pendingScannedProduct = product || {
           itemCode: code,
           itemName1: 'マスタ未登録商品 (' + code + ')',
