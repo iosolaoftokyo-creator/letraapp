@@ -98,7 +98,7 @@
       <div class="flex items-center space-x-3 text-xs sm:text-sm">
         <div class="flex items-center bg-slate-800 rounded-lg px-3 py-1.5 border border-slate-700">
           <span class="text-slate-400 mr-2">作業者:</span>
-          <input type="text" id="operatorNameInput" placeholder="氏名を入力" 
+          <input type="text" id="operatorNameInput" placeholder="氏名を入力"
                  class="bg-transparent text-white font-medium focus:outline-none w-24 sm:w-32 border-b border-transparent focus:border-indigo-400 text-xs sm:text-sm" />
         </div>
         <div id="connectionStatus" class="flex items-center px-2.5 py-1 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 text-xs">
@@ -115,7 +115,7 @@
     <!-- 1. 部署・移動元・移動先 選択パネル -->
     <section class="no-print bg-white rounded-xl shadow-sm border border-slate-200 p-4 transition-all">
       <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-        
+
         <!-- 部署選択 -->
         <div class="md:col-span-3">
           <label for="deptSelect" class="block text-xs font-semibold text-slate-600 mb-1">
@@ -176,16 +176,16 @@
 
     <!-- 2. バーコードスキャン & 商品検索パネルエリア -->
     <section class="no-print grid grid-cols-1 lg:grid-cols-12 gap-4">
-      
+
       <!-- カメラ・スキャナーコンテナ -->
       <div class="lg:col-span-7 bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col justify-between">
         <div>
           <div class="flex items-center justify-between mb-2">
             <h2 class="text-sm font-bold text-slate-800 flex items-center">
-              <span class="mr-1.5">📷</span> バーコード連続スキャン (JAN / 商品コード)
+              <span class="mr-1.5">📷</span> JANコード連続スキャン (JAN-13 / JAN-8 専用)
             </h2>
             <div class="flex items-center space-x-2">
-              <button id="toggleCameraBtn" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition active:scale-95 flex items-center">
+              <button type="button" id="toggleCameraBtn" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition active:scale-95 flex items-center">
                 <span id="cameraBtnIcon" class="mr-1">▶</span>
                 <span id="cameraBtnText">カメラ起動</span>
               </button>
@@ -196,13 +196,13 @@
             <div id="reader" class="w-full"></div>
             <div id="readerPlaceholder" class="text-center p-6">
               <div class="text-4xl mb-2">📸</div>
-              <p class="text-sm font-medium text-slate-300">「カメラ起動」をタップしてスキャン開始</p>
-              <p class="text-xs text-slate-500 mt-1">端末のカメラへのアクセス許可が必要です</p>
+              <p class="text-sm font-medium text-slate-300">「カメラ起動」をタップしてJANスキャン開始</p>
+              <p class="text-xs text-slate-500 mt-1">JANコード（13桁・8桁）のみ読取・2回連続一致で誤読を防止します</p>
             </div>
-            
-            <!-- スキャン範囲（qrbox: 190x95）に合わせた中央ガイド枠 -->
+
+            <!-- スキャン範囲中央ガイド枠 -->
             <div id="scanOverlay" class="hidden pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div class="w-48 h-24 border-2 border-indigo-400 rounded-lg shadow-lg relative animate-pulse">
+              <div class="w-52 h-24 border-2 border-indigo-400 rounded-lg shadow-lg relative animate-pulse">
                 <div class="laser-beam"></div>
               </div>
             </div>
@@ -210,7 +210,7 @@
         </div>
 
         <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-          <span>連続スキャン対応：数量確定後すぐに次をスキャン可能</span>
+          <span>JAN専用（EAN-13 / EAN-8）・2フレーム一致確認で高精読化</span>
           <label class="inline-flex items-center cursor-pointer">
             <input type="checkbox" id="soundToggle" checked class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
             <span class="ml-1.5 text-xs text-slate-600">スキャン時サウンド再生</span>
@@ -218,7 +218,7 @@
         </div>
       </div>
 
-      <!-- 商品検索パネル（JAN/商品コード手動入力・スペース区切りAND検索対応） -->
+      <!-- 商品検索パネル（JAN/商品コード/名称 スペース区切りAND検索対応） -->
       <div class="lg:col-span-5 bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col justify-between relative">
         <div>
           <h2 class="text-sm font-bold text-slate-800 mb-2 flex items-center">
@@ -242,7 +242,7 @@
           <div class="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
             <div class="text-xs font-semibold text-slate-500 mb-1">直近のスキャン・選択情報</div>
             <div id="lastScannedInfo" class="text-xs text-slate-600">
-              まだ選択されていません。バーコード読込または名称検索してください。
+              まだ選択されていません。JANスキャンまたは名称検索してください。
             </div>
           </div>
         </div>
@@ -260,7 +260,7 @@
 
     <!-- 3. 移動依頼作成リスト (テーブル) -->
     <section class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print-container">
-      
+
       <div class="no-print p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70">
         <div class="flex items-center space-x-3">
           <h2 class="text-base font-bold text-slate-800 flex items-center">
@@ -275,7 +275,7 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
-          <input type="text" id="listSearchInput" placeholder="リスト内検索..." 
+          <input type="text" id="listSearchInput" placeholder="リスト内検索..."
                  class="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-28 sm:w-36" />
 
           <button type="button" id="openSentHistoryModalBtn" title="本日の送信履歴を確認"
@@ -345,7 +345,7 @@
       <div id="emptyListNotice" class="text-center py-12 px-4">
         <div class="text-4xl mb-2 text-slate-300">📦</div>
         <p class="text-sm font-semibold text-slate-600">依頼リストにアイテムがありません</p>
-        <p class="text-xs text-slate-400 mt-1">バーコードをスキャンするか、商品名・コードで検索して追加してください</p>
+        <p class="text-xs text-slate-400 mt-1">JANコードをスキャンするか、商品名・コードで検索して追加してください</p>
       </div>
 
       <div class="p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between text-xs text-slate-600">
@@ -364,6 +364,72 @@
   <footer class="no-print bg-slate-900 text-slate-400 text-xs py-3 text-center border-t border-slate-800">
     <p>© 在庫移動依頼システム | Google Apps Script & Spreadsheet</p>
   </footer>
+
+  <!-- 送信前最終確認モーダル -->
+  <div id="submitConfirmModal" class="fixed inset-0 bg-slate-950/65 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden border border-slate-200 flex flex-col max-h-[88vh]">
+      <div class="bg-amber-600 px-4 py-3 text-white flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-sm sm:text-base flex items-center">
+            <span class="mr-1.5">⚠️</span> スプレッドシート送信前の最終確認
+          </h3>
+          <p class="text-xs text-amber-50 mt-0.5 font-medium">
+            このリストで間違いありませんか？送信内容（商品・サイズ・数量・移動倉庫）を必ずご確認ください。
+          </p>
+        </div>
+        <button type="button" id="closeSubmitConfirmModalBtn" class="text-white hover:text-amber-100 text-xl leading-none font-bold px-1">×</button>
+      </div>
+
+      <div class="p-3.5 bg-amber-50/90 border-b border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div class="flex flex-wrap items-center gap-3">
+          <span>担当部署: <strong id="confirmDeptText" class="text-slate-900">-</strong></span>
+          <span>作業者: <strong id="confirmOperatorText" class="text-slate-900">-</strong></span>
+        </div>
+        <div class="flex items-center space-x-3">
+          <span>対象件数: <strong id="confirmItemCountText" class="text-slate-900">0</strong> 件</span>
+          <span>合計数量: <strong id="confirmTotalQtyText" class="text-sm text-indigo-700 font-bold">0</strong> 点</span>
+        </div>
+      </div>
+
+      <div id="confirmSameWhWarning" class="hidden px-4 py-2 bg-rose-50 border-b border-rose-200 text-rose-700 text-xs font-bold">
+        ※ 移動元倉庫と移動先倉庫が同一になっている行が含まれています。送信前にご確認ください。
+      </div>
+
+      <div class="p-4 overflow-y-auto flex-1">
+        <div class="overflow-x-auto border border-slate-200 rounded-xl">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="bg-slate-800 text-white">
+                <th class="py-2 px-2.5 w-10 text-center font-bold">No</th>
+                <th class="py-2 px-2.5 min-w-[105px] font-bold">移動元</th>
+                <th class="py-2 px-2.5 min-w-[105px] font-bold">移動先</th>
+                <th class="py-2 px-2.5 min-w-[90px] font-bold">商品コード</th>
+                <th class="py-2 px-2.5 min-w-[140px] font-bold">商品名1</th>
+                <th class="py-2 px-2.5 min-w-[100px] font-bold">商品名2</th>
+                <th class="py-2 px-2.5 min-w-[56px] text-center font-bold">サイズ</th>
+                <th class="py-2 px-2.5 min-w-[65px] text-right font-bold">数量</th>
+                <th class="py-2 px-2.5 min-w-[110px] font-bold">備考</th>
+              </tr>
+            </thead>
+            <tbody id="submitConfirmTableBody" class="divide-y divide-slate-200 bg-white">
+              <!-- 動的生成 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="p-3.5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2.5">
+        <button type="button" id="backToEditListBtn"
+                class="px-4 py-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-xs sm:text-sm font-bold transition active:scale-95">
+          もう一度確認・編集する
+        </button>
+        <button type="button" id="proceedSubmitSheetBtn"
+                class="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold shadow-md transition active:scale-95">
+          間違いないので送信する
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- 本日の送信履歴モーダル -->
   <div id="sentHistoryModal" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
@@ -429,7 +495,7 @@
           </label>
           <div class="flex items-center space-x-2">
             <button type="button" id="qtyMinusBtn" class="w-10 h-10 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-lg active:scale-95 transition">-</button>
-            <input type="number" id="modalQtyInput" min="1" max="9999" value="1" 
+            <input type="number" id="modalQtyInput" min="1" max="9999" value="1"
                    class="flex-1 text-center font-bold text-2xl text-slate-900 bg-slate-50 border border-slate-300 rounded-lg py-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
             <button type="button" id="qtyPlusBtn" class="w-10 h-10 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-lg active:scale-95 transition">+</button>
           </div>
@@ -538,6 +604,8 @@
     (function() {
       const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwjleEuc_9S32z9wEsiDotXrAEy8-_FNK3fIpR8CJ1WO0p7rdceHS4iJJavQpoqtueP/exec";
       const SCAN_COOLDOWN_MS = 1800;
+      const CONSENSUS_WINDOW_MS = 900;
+      const REQUIRED_CONSENSUS_COUNT = 2;
       const MASTER_FETCH_TIMEOUT_MS = 8000;
 
       const STORAGE_KEYS = {
@@ -565,7 +633,10 @@
         pendingScannedProduct: null,
         editItemId: null,
         lastScannedCode: '',
-        lastScannedAt: 0
+        lastScannedAt: 0,
+        consensusCode: '',
+        consensusCount: 0,
+        consensusLastAt: 0
       };
 
       const DEFAULT_COMMON_WAREHOUSES = [
@@ -619,6 +690,17 @@
         printListBtn: document.getElementById('printListBtn'),
         openClearModalBtn: document.getElementById('openClearModalBtn'),
         submitToSheetBtn: document.getElementById('submitToSheetBtn'),
+
+        submitConfirmModal: document.getElementById('submitConfirmModal'),
+        closeSubmitConfirmModalBtn: document.getElementById('closeSubmitConfirmModalBtn'),
+        confirmDeptText: document.getElementById('confirmDeptText'),
+        confirmOperatorText: document.getElementById('confirmOperatorText'),
+        confirmItemCountText: document.getElementById('confirmItemCountText'),
+        confirmTotalQtyText: document.getElementById('confirmTotalQtyText'),
+        confirmSameWhWarning: document.getElementById('confirmSameWhWarning'),
+        submitConfirmTableBody: document.getElementById('submitConfirmTableBody'),
+        backToEditListBtn: document.getElementById('backToEditListBtn'),
+        proceedSubmitSheetBtn: document.getElementById('proceedSubmitSheetBtn'),
 
         sentHistoryModal: document.getElementById('sentHistoryModal'),
         closeSentHistoryModalBtn: document.getElementById('closeSentHistoryModalBtn'),
@@ -1192,8 +1274,38 @@
       }
 
       // ----------------------------------------------------------------------
-      // バーコードスキャン処理
+      // JANバーコードスキャン処理（JAN専用・読込精度向上）
       // ----------------------------------------------------------------------
+
+      function resetConsensusState() {
+        state.consensusCode = '';
+        state.consensusCount = 0;
+        state.consensusLastAt = 0;
+      }
+
+      function normalizeJanCode(rawText) {
+        // JANコードは数字のみ（8桁または13桁）を対象とする
+        const digitsOnly = String(rawText || '').trim().replace(/\s+/g, '');
+        if (!/^\d{8}$|^\d{13}$/.test(digitsOnly)) {
+          return '';
+        }
+        return digitsOnly;
+      }
+
+      function isValidJanCheckDigit(jan) {
+        if (!/^\d{8}$|^\d{13}$/.test(jan)) return false;
+        const digits = jan.split('').map(Number);
+        const checkDigit = digits.pop();
+
+        // JAN-8 / JAN-13 共通の右端からの重み付け（奇数位置=3, 偶数位置=1）
+        let sum = 0;
+        for (let i = digits.length - 1, posFromRight = 1; i >= 0; i--, posFromRight++) {
+          const weight = (posFromRight % 2 === 1) ? 3 : 1;
+          sum += digits[i] * weight;
+        }
+        const calculatedCheck = (10 - (sum % 10)) % 10;
+        return calculatedCheck === checkDigit;
+      }
 
       async function toggleCamera() {
         if (state.isScanning) await stopCamera();
@@ -1202,14 +1314,34 @@
 
       async function startCamera() {
         try {
-          if (!state.scanner) state.scanner = new Html5Qrcode("reader");
+          if (!state.scanner) {
+            state.scanner = new Html5Qrcode("reader", {
+              formatsToSupport: [
+                Html5QrcodeSupportedFormats.EAN_13,
+                Html5QrcodeSupportedFormats.EAN_8
+              ],
+              verbose: false
+            });
+          }
+          resetConsensusState();
           el.readerPlaceholder.classList.add('hidden');
           el.scanOverlay.classList.remove('hidden');
 
-          // 画面端のバーコードが読み取られないよう、中央の狭いエリアに qrbox を縮小
+          const cameraConfig = {
+            fps: 20,
+            qrbox: { width: 208, height: 96 },
+            aspectRatio: 1.777778,
+            videoConstraints: {
+              facingMode: { ideal: "environment" },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              focusMode: { ideal: "continuous" }
+            }
+          };
+
           await state.scanner.start(
             { facingMode: "environment" },
-            { fps: 15, qrbox: { width: 190, height: 95 }, aspectRatio: 1.777778 },
+            cameraConfig,
             onBarcodeScannedSuccess,
             onBarcodeScanFailure
           );
@@ -1219,7 +1351,7 @@
           el.cameraBtnIcon.textContent = '⏹';
           el.toggleCameraBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
           el.toggleCameraBtn.classList.add('bg-rose-600', 'hover:bg-rose-700');
-          showToast('カメラを起動しました。', 'info');
+          showToast('JANカメラを起動しました。', 'info');
         } catch (err) {
           showToast('カメラ起動失敗: ' + err.message, 'error');
           el.readerPlaceholder.classList.remove('hidden');
@@ -1228,6 +1360,7 @@
       }
 
       async function stopCamera() {
+        resetConsensusState();
         if (state.scanner && state.isScanning) {
           try { await state.scanner.stop(); } catch (e) {}
         }
@@ -1270,32 +1403,57 @@
       }
 
       function onBarcodeScannedSuccess(decodedText) {
-        const cleanCode = String(decodedText || '').trim();
-        if (!cleanCode) return;
-
-        // 数量入力モーダルが開いている間の連続誤読を防止
-        if (!el.quantityModal.classList.contains('hidden')) {
+        // モーダル表示中の誤読を防止
+        if (!el.quantityModal.classList.contains('hidden') || !el.submitConfirmModal.classList.contains('hidden')) {
           return;
         }
 
-        // 同一バーコードの短時間連続検知をスキップ（クールダウン）
+        // JANコード形式（8桁または13桁の数字）のみ許可
+        const janCode = normalizeJanCode(decodedText);
+        if (!janCode) {
+          return;
+        }
+
+        // チェックデジット検証（不正な桁誤読を弾く）
+        if (!isValidJanCheckDigit(janCode)) {
+          return;
+        }
+
+        // 同一JANの短時間連続検知をスキップ（クールダウン）
         const now = Date.now();
-        if (state.lastScannedCode === cleanCode && (now - state.lastScannedAt) < SCAN_COOLDOWN_MS) {
+        if (state.lastScannedCode === janCode && (now - state.lastScannedAt) < SCAN_COOLDOWN_MS) {
           return;
         }
-        state.lastScannedCode = cleanCode;
+
+        // 複数フレーム一致判定（短時間に同一JANが連続一致した場合のみ確定）
+        if (state.consensusCode === janCode && (now - state.consensusLastAt) <= CONSENSUS_WINDOW_MS) {
+          state.consensusCount += 1;
+          state.consensusLastAt = now;
+        } else {
+          state.consensusCode = janCode;
+          state.consensusCount = 1;
+          state.consensusLastAt = now;
+          return;
+        }
+
+        if (state.consensusCount < REQUIRED_CONSENSUS_COUNT) {
+          return;
+        }
+
+        resetConsensusState();
+        state.lastScannedCode = janCode;
         state.lastScannedAt = now;
 
-        const product = findProduct(cleanCode);
+        const product = findProductByJan(janCode);
         if (!product) {
-          showToast('該当の商品マスタが存在しません', 'error');
-          el.lastScannedInfo.innerHTML = '未登録バーコード: <strong class="text-rose-600 font-mono">' + escapeHtml(cleanCode) + '</strong> (' + new Date().toLocaleTimeString() + ')';
+          showToast('該当するJANの商品マスタが存在しません', 'error');
+          el.lastScannedInfo.innerHTML = '未登録JAN: <strong class="text-rose-600 font-mono">' + escapeHtml(janCode) + '</strong> (' + new Date().toLocaleTimeString() + ')';
           return;
         }
 
         playScanBeep();
-        const itemLabel = product.itemName1 || product.name1 || product.itemCode || cleanCode;
-        el.lastScannedInfo.innerHTML = '直近検出: <strong class="text-indigo-600 font-mono">' + escapeHtml(cleanCode) + '</strong> (' + new Date().toLocaleTimeString() + ')';
+        const itemLabel = product.itemName1 || product.name1 || product.itemCode || janCode;
+        el.lastScannedInfo.innerHTML = '直近JAN検出: <strong class="text-indigo-600 font-mono">' + escapeHtml(janCode) + '</strong> (' + new Date().toLocaleTimeString() + ')';
 
         // 直前スキャンまたは直近送信と同一商品の場合、作業を止めずに警告トーストを表示
         const prevSource = getPreviousScanSource(product);
@@ -1305,7 +1463,7 @@
           showToast('注意：直近送信と同一の商品です（' + itemLabel + '）', 'warning');
         }
 
-        openQuantityModalByCode(cleanCode, { allowUnregistered: false });
+        openQuantityModalByProduct(product);
       }
 
       function onBarcodeScanFailure(error) {}
@@ -1342,6 +1500,26 @@
         }
       }
 
+      function openQuantityModalByProduct(product) {
+        if (!product) return;
+        warnIfSameWarehouse();
+
+        state.pendingScannedProduct = product;
+        state.editItemId = null;
+        el.modalItemName1.textContent = product.itemName1 || product.name1 || '-';
+        el.modalItemName2.textContent = product.itemName2 || product.name2 || '-';
+        el.modalSize.textContent = product.size || '-';
+        el.modalItemCode.textContent = product.itemCode || product.code || '-';
+        el.modalJanCode.textContent = product.janCode || product.jan || '-';
+        el.modalQtyInput.value = '1';
+        el.modalNoteInput.value = '';
+        el.quantityModal.classList.remove('hidden');
+        setTimeout(() => {
+          el.modalQtyInput.focus();
+          el.modalQtyInput.select();
+        }, 100);
+      }
+
       function openQuantityModalByCode(code, options = {}) {
         const allowUnregistered = Boolean(options.allowUnregistered);
         const product = findProduct(code);
@@ -1351,28 +1529,24 @@
           return;
         }
 
-        warnIfSameWarehouse();
-
-        state.pendingScannedProduct = product || {
+        const resolvedProduct = product || {
           itemCode: code,
           itemName1: 'マスタ未登録商品 (' + code + ')',
           itemName2: '品番直接指定',
           size: '-',
-          janCode: code
+          janCode: ''
         };
-        state.editItemId = null;
-        el.modalItemName1.textContent = state.pendingScannedProduct.itemName1 || state.pendingScannedProduct.name1 || '-';
-        el.modalItemName2.textContent = state.pendingScannedProduct.itemName2 || state.pendingScannedProduct.name2 || '-';
-        el.modalSize.textContent = state.pendingScannedProduct.size || '-';
-        el.modalItemCode.textContent = state.pendingScannedProduct.itemCode || state.pendingScannedProduct.code || '-';
-        el.modalJanCode.textContent = state.pendingScannedProduct.janCode || state.pendingScannedProduct.jan || '-';
-        el.modalQtyInput.value = '1';
-        el.modalNoteInput.value = '';
-        el.quantityModal.classList.remove('hidden');
-        setTimeout(() => {
-          el.modalQtyInput.focus();
-          el.modalQtyInput.select();
-        }, 100);
+
+        openQuantityModalByProduct(resolvedProduct);
+      }
+
+      function findProductByJan(jan) {
+        const targetJan = String(jan || '').trim();
+        if (!targetJan) return null;
+        return state.productMaster.find(function(p) {
+          const pJan = String(p.janCode || p.jan || '').trim();
+          return pJan === targetJan;
+        });
       }
 
       function findProduct(code) {
@@ -1594,6 +1768,61 @@
         }
       }
 
+      function openSubmitConfirmModal() {
+        if (state.items.length === 0) {
+          showToast('送信するアイテムがありません。', 'warning');
+          return;
+        }
+
+        const operator = (state.operatorName || el.operatorNameInput.value).trim();
+        if (!operator) {
+          showToast('作業者名を入力してください。', 'warning');
+          el.operatorNameInput.focus();
+          return;
+        }
+
+        state.operatorName = operator;
+        saveStateToStorage();
+
+        const totalQty = state.items.reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0);
+        const hasSameWarehouse = state.items.some(item => item.sourceWarehouse === item.destWarehouse);
+
+        el.confirmDeptText.textContent = state.currentDepartment;
+        el.confirmOperatorText.textContent = operator;
+        el.confirmItemCountText.textContent = String(state.items.length);
+        el.confirmTotalQtyText.textContent = String(totalQty);
+
+        if (hasSameWarehouse) {
+          el.confirmSameWhWarning.classList.remove('hidden');
+        } else {
+          el.confirmSameWhWarning.classList.add('hidden');
+        }
+
+        el.submitConfirmTableBody.innerHTML = state.items.map((item, idx) => {
+          const isSame = item.sourceWarehouse === item.destWarehouse;
+          const rowClass = isSame ? 'bg-rose-50/70' : 'hover:bg-slate-50';
+          return `
+            <tr class="${rowClass} border-b border-slate-100">
+              <td class="py-2 px-2.5 text-center text-slate-400 font-mono">${idx + 1}</td>
+              <td class="py-2 px-2.5 font-medium text-slate-800">${escapeHtml(item.sourceWarehouse)}</td>
+              <td class="py-2 px-2.5 font-medium ${isSame ? 'text-rose-700 font-bold' : 'text-indigo-700'}">${escapeHtml(item.destWarehouse)}</td>
+              <td class="py-2 px-2.5 font-mono font-bold text-slate-900">${escapeHtml(item.itemCode)}</td>
+              <td class="py-2 px-2.5 font-medium text-slate-800">${escapeHtml(item.itemName1)}</td>
+              <td class="py-2 px-2.5 text-slate-600">${escapeHtml(item.itemName2 || '-')}</td>
+              <td class="py-2 px-2.5 text-center"><span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[10px]">${escapeHtml(item.size || '-')}</span></td>
+              <td class="py-2 px-2.5 text-right font-bold text-slate-900 text-sm">${item.quantity}</td>
+              <td class="py-2 px-2.5 text-slate-500">${escapeHtml(item.note || '-')}</td>
+            </tr>
+          `;
+        }).join('');
+
+        el.submitConfirmModal.classList.remove('hidden');
+      }
+
+      function closeSubmitConfirmModal() {
+        el.submitConfirmModal.classList.add('hidden');
+      }
+
       async function submitToSpreadsheet() {
         if (state.items.length === 0) {
           showToast('送信するアイテムがありません。', 'warning');
@@ -1607,11 +1836,7 @@
           return;
         }
 
-        const hasSameWarehouse = state.items.some(item => item.sourceWarehouse === item.destWarehouse);
-        if (hasSameWarehouse) {
-          const proceed = confirm('移動元と移動先が同一の倉庫になっている行があります。このままスプレッドシートへ送信しますか？');
-          if (!proceed) return;
-        }
+        closeSubmitConfirmModal();
 
         state.operatorName = operator;
         saveStateToStorage();
@@ -1807,6 +2032,11 @@
         el.swapWarehouseBtn.addEventListener('click', swapWarehouses);
         el.toggleCameraBtn.addEventListener('click', toggleCamera);
 
+        // 送信前最終確認モーダル関連イベント
+        el.closeSubmitConfirmModalBtn.addEventListener('click', closeSubmitConfirmModal);
+        el.backToEditListBtn.addEventListener('click', closeSubmitConfirmModal);
+        el.proceedSubmitSheetBtn.addEventListener('click', submitToSpreadsheet);
+
         // 送信履歴モーダル関連イベント
         el.openSentHistoryModalBtn.addEventListener('click', openSentHistoryModal);
         el.closeSentHistoryModalBtn.addEventListener('click', closeSentHistoryModal);
@@ -1825,7 +2055,7 @@
         // 商品検索パネルのイベント
         el.productSearchInput.addEventListener('input', handleProductSearchInput);
         el.productSearchInput.addEventListener('focus', handleProductSearchInput);
-        
+
         el.productSearchClearBtn.addEventListener('click', function() {
           el.productSearchInput.value = '';
           el.productSuggestDropdown.classList.add('hidden');
@@ -1844,6 +2074,8 @@
           if (e.key === 'Escape') {
             if (!el.quantityModal.classList.contains('hidden')) {
               closeQuantityModal();
+            } else if (!el.submitConfirmModal.classList.contains('hidden')) {
+              closeSubmitConfirmModal();
             } else if (!el.sentHistoryModal.classList.contains('hidden')) {
               closeSentHistoryModal();
             } else if (!el.addWarehouseModal.classList.contains('hidden')) {
@@ -1901,7 +2133,7 @@
         el.listSearchInput.addEventListener('input', renderTable);
         el.exportCsvBtn.addEventListener('click', exportCsv);
         el.printListBtn.addEventListener('click', triggerPrint);
-        el.submitToSheetBtn.addEventListener('click', submitToSpreadsheet);
+        el.submitToSheetBtn.addEventListener('click', openSubmitConfirmModal);
 
         el.openClearModalBtn.addEventListener('click', function() {
           el.clearModalCount.textContent = state.items.length;
