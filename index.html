@@ -182,7 +182,7 @@
         <div>
           <div class="flex items-center justify-between mb-2">
             <h2 class="text-sm font-bold text-slate-800 flex items-center">
-              <span class="mr-1.5">📷</span> JANコード連続スキャン (JAN-13 / JAN-8 専用)
+              <span class="mr-1.5">📷</span> バーコード連続スキャン (JAN / CODE39)
             </h2>
             <div class="flex items-center space-x-2">
               <button type="button" id="toggleCameraBtn" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition active:scale-95 flex items-center">
@@ -196,13 +196,13 @@
             <div id="reader" class="w-full"></div>
             <div id="readerPlaceholder" class="text-center p-6">
               <div class="text-4xl mb-2">📸</div>
-              <p class="text-sm font-medium text-slate-300">「カメラ起動」をタップしてJANスキャン開始</p>
-              <p class="text-xs text-slate-500 mt-1">JANコード（13桁・8桁）のみ読取・2回連続一致で誤読を防止します</p>
+              <p class="text-sm font-medium text-slate-300">「カメラ起動」をタップしてスキャン開始</p>
+              <p class="text-xs text-slate-500 mt-1">JAN（13桁・8桁）およびCODE39に対応・2回連続一致で誤読を防止します</p>
             </div>
 
-            <!-- スキャン範囲中央ガイド枠 -->
+            <!-- スキャン範囲中央ガイド枠（横幅240px / 高さ96px） -->
             <div id="scanOverlay" class="hidden pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div class="w-52 h-24 border-2 border-indigo-400 rounded-lg shadow-lg relative animate-pulse">
+              <div class="w-60 h-24 border-2 border-indigo-400 rounded-lg shadow-lg relative animate-pulse">
                 <div class="laser-beam"></div>
               </div>
             </div>
@@ -210,7 +210,7 @@
         </div>
 
         <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-          <span>JAN専用（EAN-13 / EAN-8）・2フレーム一致確認で高精読化</span>
+          <span>JAN（EAN-13 / EAN-8）＆ CODE39 対応・2フレーム一致確認で高精読化</span>
           <label class="inline-flex items-center cursor-pointer">
             <input type="checkbox" id="soundToggle" checked class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
             <span class="ml-1.5 text-xs text-slate-600">スキャン時サウンド再生</span>
@@ -242,7 +242,7 @@
           <div class="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
             <div class="text-xs font-semibold text-slate-500 mb-1">直近のスキャン・選択情報</div>
             <div id="lastScannedInfo" class="text-xs text-slate-600">
-              まだ選択されていません。JANスキャンまたは名称検索してください。
+              まだ選択されていません。バーコード読込または名称検索してください。
             </div>
           </div>
         </div>
@@ -345,7 +345,7 @@
       <div id="emptyListNotice" class="text-center py-12 px-4">
         <div class="text-4xl mb-2 text-slate-300">📦</div>
         <p class="text-sm font-semibold text-slate-600">依頼リストにアイテムがありません</p>
-        <p class="text-xs text-slate-400 mt-1">JANコードをスキャンするか、商品名・コードで検索して追加してください</p>
+        <p class="text-xs text-slate-400 mt-1">バーコードをスキャンするか、商品名・コードで検索して追加してください</p>
       </div>
 
       <div class="p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between text-xs text-slate-600">
@@ -1274,7 +1274,7 @@
       }
 
       // ----------------------------------------------------------------------
-      // JANバーコードスキャン処理（JAN専用・読込精度向上）
+      // バーコードスキャン処理（JAN専用検証維持 ＋ CODE39対応 ＋ 読込精度向上）
       // ----------------------------------------------------------------------
 
       function resetConsensusState() {
@@ -1284,7 +1284,6 @@
       }
 
       function normalizeJanCode(rawText) {
-        // JANコードは数字のみ（8桁または13桁）を対象とする
         const digitsOnly = String(rawText || '').trim().replace(/\s+/g, '');
         if (!/^\d{8}$|^\d{13}$/.test(digitsOnly)) {
           return '';
@@ -1297,7 +1296,6 @@
         const digits = jan.split('').map(Number);
         const checkDigit = digits.pop();
 
-        // JAN-8 / JAN-13 共通の右端からの重み付け（奇数位置=3, 偶数位置=1）
         let sum = 0;
         for (let i = digits.length - 1, posFromRight = 1; i >= 0; i--, posFromRight++) {
           const weight = (posFromRight % 2 === 1) ? 3 : 1;
@@ -1305,6 +1303,22 @@
         }
         const calculatedCheck = (10 - (sum % 10)) % 10;
         return calculatedCheck === checkDigit;
+      }
+
+      function normalizeCode39Value(rawText) {
+        // Excelの =CONCATENATE("*",B3,"*") 等で前後に付与される * を除去
+        const trimmed = String(rawText || '').trim().replace(/^\*+|\*+$/g, '').trim();
+        return trimmed;
+      }
+
+      function buildSupportedFormats() {
+        const formats = [];
+        if (typeof Html5QrcodeSupportedFormats !== 'undefined') {
+          if (Html5QrcodeSupportedFormats.EAN_13) formats.push(Html5QrcodeSupportedFormats.EAN_13);
+          if (Html5QrcodeSupportedFormats.EAN_8) formats.push(Html5QrcodeSupportedFormats.EAN_8);
+          if (Html5QrcodeSupportedFormats.CODE_39) formats.push(Html5QrcodeSupportedFormats.CODE_39);
+        }
+        return formats;
       }
 
       async function toggleCamera() {
@@ -1315,21 +1329,20 @@
       async function startCamera() {
         try {
           if (!state.scanner) {
-            state.scanner = new Html5Qrcode("reader", {
-              formatsToSupport: [
-                Html5QrcodeSupportedFormats.EAN_13,
-                Html5QrcodeSupportedFormats.EAN_8
-              ],
-              verbose: false
-            });
+            const formats = buildSupportedFormats();
+            const scannerOptions = formats.length > 0
+              ? { formatsToSupport: formats, verbose: false }
+              : { verbose: false };
+            state.scanner = new Html5Qrcode("reader", scannerOptions);
           }
           resetConsensusState();
           el.readerPlaceholder.classList.add('hidden');
           el.scanOverlay.classList.remove('hidden');
 
+          // 横幅を少し拡大（240px × 96px）し、高解像度・連続オートフォーカスを指定
           const cameraConfig = {
             fps: 20,
-            qrbox: { width: 208, height: 96 },
+            qrbox: { width: 240, height: 96 },
             aspectRatio: 1.777778,
             videoConstraints: {
               facingMode: { ideal: "environment" },
@@ -1351,7 +1364,7 @@
           el.cameraBtnIcon.textContent = '⏹';
           el.toggleCameraBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
           el.toggleCameraBtn.classList.add('bg-rose-600', 'hover:bg-rose-700');
-          showToast('JANカメラを起動しました。', 'info');
+          showToast('カメラを起動しました（JAN / CODE39）。', 'info');
         } catch (err) {
           showToast('カメラ起動失敗: ' + err.message, 'error');
           el.readerPlaceholder.classList.remove('hidden');
@@ -1402,35 +1415,69 @@
         return null;
       }
 
+      function resolveScannedProduct(decodedText) {
+        const raw = String(decodedText || '').trim();
+        if (!raw) {
+          return { mode: 'invalid', code: '', product: null };
+        }
+
+        // 8桁または13桁の数字はJANとして既存のチェックデジット検証＋JAN照合を優先適用
+        const janCode = normalizeJanCode(raw);
+        if (janCode) {
+          if (!isValidJanCheckDigit(janCode)) {
+            return { mode: 'invalid_jan', code: janCode, product: null };
+          }
+          return {
+            mode: 'jan',
+            code: janCode,
+            product: findProductByJan(janCode)
+          };
+        }
+
+        // CODE39等（前後の * を除去して商品コード itemCode と照合）
+        const itemCode = normalizeCode39Value(raw);
+        if (!itemCode) {
+          return { mode: 'invalid', code: '', product: null };
+        }
+
+        return {
+          mode: 'code39',
+          code: itemCode,
+          product: findProductByItemCode(itemCode)
+        };
+      }
+
       function onBarcodeScannedSuccess(decodedText) {
         // モーダル表示中の誤読を防止
-        if (!el.quantityModal.classList.contains('hidden') || !el.submitConfirmModal.classList.contains('hidden')) {
+        if (
+          !el.quantityModal.classList.contains('hidden') ||
+          !el.submitConfirmModal.classList.contains('hidden') ||
+          !el.sentHistoryModal.classList.contains('hidden') ||
+          !el.addWarehouseModal.classList.contains('hidden') ||
+          !el.clearConfirmModal.classList.contains('hidden')
+        ) {
           return;
         }
 
-        // JANコード形式（8桁または13桁の数字）のみ許可
-        const janCode = normalizeJanCode(decodedText);
-        if (!janCode) {
+        const resolved = resolveScannedProduct(decodedText);
+        if (resolved.mode === 'invalid' || resolved.mode === 'invalid_jan' || !resolved.code) {
           return;
         }
 
-        // チェックデジット検証（不正な桁誤読を弾く）
-        if (!isValidJanCheckDigit(janCode)) {
-          return;
-        }
-
-        // 同一JANの短時間連続検知をスキップ（クールダウン）
+        const scanKey = `${resolved.mode}:${resolved.code.toUpperCase()}`;
         const now = Date.now();
-        if (state.lastScannedCode === janCode && (now - state.lastScannedAt) < SCAN_COOLDOWN_MS) {
+
+        // 同一コードの短時間連続検知をスキップ（クールダウン）
+        if (state.lastScannedCode === scanKey && (now - state.lastScannedAt) < SCAN_COOLDOWN_MS) {
           return;
         }
 
-        // 複数フレーム一致判定（短時間に同一JANが連続一致した場合のみ確定）
-        if (state.consensusCode === janCode && (now - state.consensusLastAt) <= CONSENSUS_WINDOW_MS) {
+        // 複数フレーム一致判定（短時間に同一コードが連続一致した場合のみ確定）
+        if (state.consensusCode === scanKey && (now - state.consensusLastAt) <= CONSENSUS_WINDOW_MS) {
           state.consensusCount += 1;
           state.consensusLastAt = now;
         } else {
-          state.consensusCode = janCode;
+          state.consensusCode = scanKey;
           state.consensusCount = 1;
           state.consensusLastAt = now;
           return;
@@ -1441,29 +1488,29 @@
         }
 
         resetConsensusState();
-        state.lastScannedCode = janCode;
+        state.lastScannedCode = scanKey;
         state.lastScannedAt = now;
 
-        const product = findProductByJan(janCode);
-        if (!product) {
-          showToast('該当するJANの商品マスタが存在しません', 'error');
-          el.lastScannedInfo.innerHTML = '未登録JAN: <strong class="text-rose-600 font-mono">' + escapeHtml(janCode) + '</strong> (' + new Date().toLocaleTimeString() + ')';
+        const modeLabel = resolved.mode === 'jan' ? 'JAN' : 'CODE39(品番)';
+        if (!resolved.product) {
+          showToast(`該当する商品マスタが存在しません（${resolved.code}）`, 'error');
+          el.lastScannedInfo.innerHTML = `未登録${modeLabel}: <strong class="text-rose-600 font-mono">${escapeHtml(resolved.code)}</strong> (${new Date().toLocaleTimeString()})`;
           return;
         }
 
         playScanBeep();
-        const itemLabel = product.itemName1 || product.name1 || product.itemCode || janCode;
-        el.lastScannedInfo.innerHTML = '直近JAN検出: <strong class="text-indigo-600 font-mono">' + escapeHtml(janCode) + '</strong> (' + new Date().toLocaleTimeString() + ')';
+        const itemLabel = resolved.product.itemName1 || resolved.product.name1 || resolved.product.itemCode || resolved.code;
+        el.lastScannedInfo.innerHTML = `直近${modeLabel}検出: <strong class="text-indigo-600 font-mono">${escapeHtml(resolved.code)}</strong> (${new Date().toLocaleTimeString()})`;
 
         // 直前スキャンまたは直近送信と同一商品の場合、作業を止めずに警告トーストを表示
-        const prevSource = getPreviousScanSource(product);
+        const prevSource = getPreviousScanSource(resolved.product);
         if (prevSource === 'list') {
           showToast('注意：直前スキャンと同一の商品です（' + itemLabel + '）', 'warning');
         } else if (prevSource === 'history') {
           showToast('注意：直近送信と同一の商品です（' + itemLabel + '）', 'warning');
         }
 
-        openQuantityModalByProduct(product);
+        openQuantityModalByProduct(resolved.product);
       }
 
       function onBarcodeScanFailure(error) {}
@@ -1546,6 +1593,15 @@
         return state.productMaster.find(function(p) {
           const pJan = String(p.janCode || p.jan || '').trim();
           return pJan === targetJan;
+        });
+      }
+
+      function findProductByItemCode(itemCode) {
+        const targetCode = normalizeCode39Value(itemCode).toUpperCase();
+        if (!targetCode) return null;
+        return state.productMaster.find(function(p) {
+          const pCode = String(p.itemCode || p.code || '').trim().toUpperCase();
+          return pCode === targetCode;
         });
       }
 
